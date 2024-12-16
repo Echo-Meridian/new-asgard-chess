@@ -80,17 +80,29 @@ function deepCloneBoard(board: (ChessPiece | null)[][]): (ChessPiece | null)[][]
     );
   }
 
-  const soundMap: SoundMap = {
+  const soundMap = {
+    // Global sounds
     check: '/sounds/check.mp3',
     invalid: '/sounds/invalid.mp3',
     move: '/sounds/move.mp3',
     capture: '/sounds/capture.mp3',
+    
     pieces: {
       black: {
-        pawn: '/sounds/pieces/black/pawn.mp3'
+        pawn: '/sounds/pieces/black/pawn.mp3',
+        rook: '/sounds/pieces/black/rook.mp3',
+        knight: '/sounds/pieces/black/knight.mp3',
+        bishop: '/sounds/pieces/black/bishop.mp3',
+        queen: '/sounds/pieces/black/queen.mp3',
+        king: '/sounds/pieces/black/king.mp3'
       },
       white: {
-        pawn: '/sounds/pieces/white/pawn.mp3'
+        pawn: '/sounds/pieces/white/pawn.mp3',
+        rook: '/sounds/pieces/white/rook.mp3',
+        knight: '/sounds/pieces/white/knight.mp3',
+        bishop: '/sounds/pieces/white/bishop.mp3',
+        queen: '/sounds/pieces/white/queen.mp3',
+        king: '/sounds/pieces/white/king.mp3'
       }
     }
   };
@@ -102,7 +114,6 @@ function deepCloneBoard(board: (ChessPiece | null)[][]): (ChessPiece | null)[][]
       let soundPath: string;
       
       if (piece && (type === 'move' || type === 'capture')) {
-        // Play piece-specific sound if it exists
         const pieceSound = soundMap.pieces[piece.color]?.[piece.type];
         soundPath = pieceSound || soundMap[type];
       } else {
@@ -110,12 +121,13 @@ function deepCloneBoard(board: (ChessPiece | null)[][]): (ChessPiece | null)[][]
       }
   
       const audio = new Audio(soundPath);
+      // Keep volume low and consistent
+      audio.volume = 0.2;  // Even lower than before at 20%
       audio.play().catch(err => console.log('Sound play error:', err));
     } catch (err) {
       console.log('Sound creation error:', err);
     }
   };
-
 // First, let's add a CSS class for the rune effects
 const runeOverlays = {
   normal: "ᛗ", // Mannaz - represents movement
@@ -701,13 +713,16 @@ if (kingPos) {
         }
         const newBoard = deepCloneBoard(board);
         const movingPiece = newBoard[selectedPiece.row][selectedPiece.col]!;
+        console.log('Moving piece:', movingPiece);
         const isCapture = board[row][col] !== null;
        // In your move handling code where you call playSound
-if (isCapture) {
-  playSound('capture', movingPiece);
-} else {
-  playSound('move', movingPiece);
-}
+       if (isCapture) {
+        console.log('Attempting capture sound with piece:', movingPiece); // Add this
+        playSound('capture', movingPiece);
+      } else {
+        console.log('Attempting move sound with piece:', movingPiece); // Add this
+        playSound('move', movingPiece);
+      }
         
         // Handle special moves
         if (movingPiece.type === 'king') {
