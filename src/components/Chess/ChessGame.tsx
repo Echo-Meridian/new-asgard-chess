@@ -7,13 +7,6 @@ import { useState } from 'react';
 // Types and Interfaces
 type PieceType = 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn';
 type PieceColor = 'white' | 'black';
-type PieceSounds = {
-  [K in PieceType]?: string;
-};
-
-type ColorSounds = {
-  [K in PieceColor]: PieceSounds;
-};
 
 interface ChessPiece {
   type: PieceType;
@@ -23,13 +16,6 @@ interface ChessPiece {
 interface Position {
   row: number;
   col: number;
-}
-interface SoundMap {
-  check: string;
-  invalid: string;
-  move: string;
-  capture: string;
-  pieces: ColorSounds;
 }
 
 function deepCloneBoard(board: (ChessPiece | null)[][]): (ChessPiece | null)[][] {
