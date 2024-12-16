@@ -17,11 +17,14 @@
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-marker);
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  background-color: #111827;  /* Your dark background color */
 }
 
+html {
+  height: -webkit-fill-available;
+}
 .rune-style {
   font-family: ui-monospace, monospace;
 }

@@ -836,8 +836,7 @@ setValidMoves([]);
     }
   }
   return (
-    <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] bg-gray-900 p-4">
-      <div className="w-full max-w-[min(75vh,750px)] aspect-square flex flex-col">
+    <div className="flex flex-col items-center justify-center min-h-[100vh] bg-gray-900 p-4"> <div className="w-full max-w-[min(75vh,750px)] aspect-square flex flex-col">
         <div className="bg-gray-800 shadow-2xl rounded-lg p-3 border-2 border-amber-600 flex-1 flex flex-col">
           <h1 className="text-4xl font-bold mb-4 text-center text-amber-400" style={{ fontFamily: 'Marker Felt, Comic Sans MS, cursive' }}>
             New Asgard Chess
