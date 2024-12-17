@@ -415,6 +415,7 @@ function getCastlingMoves(piece: ChessPiece, pos: Position, checkBoard: (ChessPi
   const [selectedPiece, setSelectedPiece] = useState<Position | null>(null);
   const [validMoves, setValidMoves] = useState<Position[]>([]);
   const [hasMoved, setHasMoved] = useState<{[key: string]: boolean}>({});
+  const [showInfo, setShowInfo] = useState(false);
 const [enPassantTarget, setEnPassantTarget] = useState<Position | null>(null);
 const [promotionPawn, setPromotionPawn] = useState<{
   position: Position;
@@ -908,28 +909,65 @@ setValidMoves([]);
             )}
           </div>
   
-          <div className="mt-4 flex justify-center">
-            <button 
-              className="px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg 
-                         transition-colors duration-200 shadow-lg hover:shadow-xl"
-              onClick={() => {
-                setBoard(initializeBoard());
-                setCurrentPlayer('white');
-                setSelectedPiece(null);
-                setValidMoves([]);
-                setGameState({
-                  isOver: false,
-                  winner: null,
-                  message: ''
-                });
-                setHasMoved({});
-                setEnPassantTarget(null);
-                setPromotionPawn(null);
-              }}
-            >
-              New Game
-            </button>
-          </div>
+          <div className="mt-4 flex justify-center gap-4">
+  <button 
+    className="px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg 
+               transition-colors duration-200 shadow-lg hover:shadow-xl"
+    onClick={() => {
+      setBoard(initializeBoard());
+      setCurrentPlayer('white');
+      setSelectedPiece(null);
+      setValidMoves([]);
+      setGameState({
+        isOver: false,
+        winner: null,
+        message: ''
+      });
+      setHasMoved({});
+      setEnPassantTarget(null);
+      setPromotionPawn(null);
+    }}
+  >
+    New Game
+  </button>
+  
+  <button 
+    className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg 
+               transition-colors duration-200 shadow-lg hover:shadow-xl"
+    onClick={() => setShowInfo(true)}
+    aria-label="Game Information"
+  >
+    ℹ️
+  </button>
+</div>
+{showInfo && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowInfo(false)}>
+  <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-md border-2 border-amber-600" onClick={e => e.stopPropagation()}>
+    <h2 className="text-2xl font-bold text-amber-400 mb-4">New Asgard Chess</h2>
+    <p className="text-gray-200 mb-4">
+      A Norse-themed chess game for Sam's adventures in New Asgard.
+    </p>
+    <div className="text-sm text-gray-400 mb-4">
+      Version 1.0.0
+    </div>
+    <div className="text-xs text-gray-500 mb-4 space-y-1">
+      <div>Coming Soon:</div>
+      <ul className="list-disc pl-4 space-y-1">
+        <li>Online multiplayer</li>
+        <li>Game analytics</li>
+        <li>AI opponent</li>
+        <li>Custom piece themes</li>
+      </ul>
+    </div>
+    <button 
+      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
+      onClick={() => setShowInfo(false)}
+    >
+      Close
+    </button>
+  </div>
+</div>
+)}
         </div>
         
         {promotionPawn && (
