@@ -98,20 +98,30 @@ function deepCloneBoard(board: (ChessPiece | null)[][]): (ChessPiece | null)[][]
   
     try {
       let soundPath: string;
+      console.log('Attempting to play sound type:', type);
       
       if (piece && (type === 'move' || type === 'capture')) {
         const pieceSound = soundMap.pieces[piece.color]?.[piece.type];
         soundPath = pieceSound || soundMap[type];
+        console.log('Piece-specific sound path:', soundPath);
       } else {
         soundPath = soundMap[type];
+        console.log('General sound path:', soundPath);
       }
   
+      console.log('Creating audio with path:', soundPath);
       const audio = new Audio(soundPath);
-      // Keep volume low and consistent
-      audio.volume = 0.2;  // Even lower than before at 20%
-      audio.play().catch(err => console.log('Sound play error:', err));
+      audio.volume = 0.2;
+      
+      audio.onerror = (e) => {
+        console.error('Audio load error:', e);
+      };
+      
+      audio.play()
+        .then(() => console.log('Sound played successfully'))
+        .catch(err => console.error('Sound play error:', err, err.message));
     } catch (err) {
-      console.log('Sound creation error:', err);
+      console.error('Sound creation error:', err);
     }
   };
 // First, let's add a CSS class for the rune effects
