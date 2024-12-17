@@ -945,7 +945,7 @@ setValidMoves([]);
   <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-md border-2 border-amber-600" onClick={e => e.stopPropagation()}>
     <h2 className="text-2xl font-bold text-amber-400 mb-4">New Asgard Chess</h2>
     <p className="text-gray-200 mb-4">
-      A Norse-themed chess game for Sam's adventures in New Asgard.
+    A Norse-themed chess game for Sam&apos;s adventures in New Asgard.
     </p>
     <div className="text-sm text-gray-400 mb-4">
       Version 1.0.0
