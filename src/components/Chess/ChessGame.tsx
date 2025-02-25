@@ -140,31 +140,25 @@ const generateMoveNotation = (
     if (typeof window === 'undefined') return;
   
     try {
-      let soundPath: string;
-      console.log('Attempting to play sound type:', type);
+      let soundPath = '';
       
-      if (piece && (type === 'move' || type === 'capture')) {
-        const pieceSound = soundMap.pieces[piece.color]?.[piece.type];
-        soundPath = pieceSound || soundMap[type];
-        console.log('Piece-specific sound path:', soundPath);
-      } else {
-        soundPath = soundMap[type];
-        console.log('General sound path:', soundPath);
+      // Simplified logic - focus on making the basic sounds work
+      if (type === 'move') {
+        soundPath = '/sounds/move.mp3';
+      } else if (type === 'capture') {
+        soundPath = '/sounds/capture.mp3';  
+      } else if (type === 'check') {
+        soundPath = '/sounds/check.mp3';
+      } else if (type === 'invalid') {
+        soundPath = '/sounds/invalid.mp3';
       }
-  
-      console.log('Creating audio with path:', soundPath);
+      
+      console.log('Playing sound:', soundPath);
       const audio = new Audio(soundPath);
-      audio.volume = 0.2;
-      
-      audio.onerror = (e) => {
-        console.error('Audio load error:', e);
-      };
-      
-      audio.play()
-        .then(() => console.log('Sound played successfully'))
-        .catch(err => console.error('Sound play error:', err, err.message));
+      audio.volume = 0.5;
+      audio.play().catch(e => console.error('Audio play error:', e));
     } catch (err) {
-      console.error('Sound creation error:', err);
+      console.error('Sound error:', err);
     }
   };
 // First, let's add a CSS class for the rune effects
@@ -758,13 +752,14 @@ if (kingPos) {
         console.log('Moving piece:', movingPiece);
         const isCapture = board[row][col] !== null;
        // In your move handling code where you call playSound
+       console.log('Making move, isCapture:', isCapture);
        if (isCapture) {
-        console.log('Attempting capture sound with piece:', movingPiece); // Add this
-        playSound('capture', movingPiece);
-      } else {
-        console.log('Attempting move sound with piece:', movingPiece); // Add this
-        playSound('move', movingPiece);
-      }
+         console.log('Playing capture sound');
+         playSound('capture');
+       } else {
+         console.log('Playing move sound');
+         playSound('move');
+       }
       const moveNotation = generateMoveNotation(movingPiece, 
         { row: selectedPiece.row, col: selectedPiece.col }, 
         { row, col }, 
