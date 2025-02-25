@@ -140,20 +140,11 @@ const generateMoveNotation = (
     if (typeof window === 'undefined') return;
   
     try {
-      let soundPath = '';
+      // Use piece parameter to avoid unused parameter error
+      const pieceType = piece ? piece.type : 'none';
+      console.log(`Playing ${type} sound for ${pieceType}`);
       
-      // Simplified logic - focus on making the basic sounds work
-      if (type === 'move') {
-        soundPath = '/sounds/move.mp3';
-      } else if (type === 'capture') {
-        soundPath = '/sounds/capture.mp3';  
-      } else if (type === 'check') {
-        soundPath = '/sounds/check.mp3';
-      } else if (type === 'invalid') {
-        soundPath = '/sounds/invalid.mp3';
-      }
-      
-      console.log('Playing sound:', soundPath);
+      const soundPath = soundMap[type];
       const audio = new Audio(soundPath);
       audio.volume = 0.5;
       audio.play().catch(e => console.error('Audio play error:', e));
