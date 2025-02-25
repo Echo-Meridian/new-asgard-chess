@@ -94,7 +94,7 @@ const generateMoveNotation = (
   
   // Add from file for pawns that capture
   if (piece.type === 'pawn' && isCapture) {
-    notation += files[from.col];
+    notation += fromSquare[0]; // Use first character of fromSquare
   }
   
   // Add capture symbol
