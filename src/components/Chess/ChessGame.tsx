@@ -66,6 +66,49 @@ function deepCloneBoard(board: (ChessPiece | null)[][]): (ChessPiece | null)[][]
     );
   }
 
+
+// Add this function to generate chess notation
+const generateMoveNotation = (
+  piece: ChessPiece, 
+  from: Position, 
+  to: Position, 
+  isCapture: boolean
+): string => {
+  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
+  
+  const fromSquare = `${files[from.col]}${ranks[from.row]}`;
+  const toSquare = `${files[to.col]}${ranks[to.row]}`;
+  
+  // Special case for castling
+  if (piece.type === 'king' && Math.abs(to.col - from.col) === 2) {
+    return to.col > from.col ? 'O-O' : 'O-O-O';
+  }
+  
+  let notation = '';
+  
+  // Add piece letter (except for pawns)
+  if (piece.type !== 'pawn') {
+    notation += piece.type === 'knight' ? 'N' : piece.type.charAt(0).toUpperCase();
+  }
+  
+  // Add from file for pawns that capture
+  if (piece.type === 'pawn' && isCapture) {
+    notation += files[from.col];
+  }
+  
+  // Add capture symbol
+  if (isCapture) {
+    notation += 'x';
+  }
+  
+  // Add destination square
+  notation += toSquare;
+  
+  return notation;
+};
+
+
   const soundMap = {
     // Global sounds
     check: '/sounds/check.mp3',
@@ -427,6 +470,8 @@ function getCastlingMoves(piece: ChessPiece, pos: Position, checkBoard: (ChessPi
   const [hasMoved, setHasMoved] = useState<{[key: string]: boolean}>({});
   const [showInfo, setShowInfo] = useState(false);
 const [enPassantTarget, setEnPassantTarget] = useState<Position | null>(null);
+const [moveHistory, setMoveHistory] = useState<string[]>([]);
+const [showMoveHistory, setShowMoveHistory] = useState(false);
 const [promotionPawn, setPromotionPawn] = useState<{
   position: Position;
   color: PieceColor;
@@ -720,7 +765,10 @@ if (kingPos) {
         console.log('Attempting move sound with piece:', movingPiece); // Add this
         playSound('move', movingPiece);
       }
-        
+      const moveNotation = generateMoveNotation(movingPiece, 
+        { row: selectedPiece.row, col: selectedPiece.col }, 
+        { row, col }, 
+        isCapture);
         // Handle special moves
         if (movingPiece.type === 'king') {
           // Castling
@@ -793,7 +841,7 @@ if (kingPos) {
             [`${movingPiece.color}-${piece}`]: true
           });
         }
-      
+        setMoveHistory(prev => [...prev, moveNotation]);
         // After all moves are made on newBoard (after castling, en passant, etc.)
 const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
 
@@ -918,12 +966,14 @@ setValidMoves([]);
               })
             )}
           </div>
-  
+
           <div className="mt-4 flex justify-center gap-4">
+          
   <button 
     className="px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg 
                transition-colors duration-200 shadow-lg hover:shadow-xl"
     onClick={() => {
+      setMoveHistory([]);
       setBoard(initializeBoard());
       setCurrentPlayer('white');
       setSelectedPiece(null);
@@ -949,6 +999,56 @@ setValidMoves([]);
   >
     ℹ️
   </button>
+  <button 
+    className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg 
+               transition-colors duration-200 shadow-lg hover:shadow-xl"
+    onClick={() => setShowMoveHistory(!showMoveHistory)}
+    aria-label="Move History"
+  >
+    📜
+  </button>
+</div>
+{showMoveHistory && (
+  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40" 
+       onClick={() => setShowMoveHistory(false)}>
+    <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-xs w-full border-2 border-amber-600 m-4" 
+         onClick={e => e.stopPropagation()}>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-amber-400">Move History</h2>
+        <button 
+  className="text-amber-400 hover:text-amber-300 text-xl font-bold"
+  onClick={() => setShowMoveHistory(false)}
+>
+  ✕
+</button>
+      </div>
+      
+      {moveHistory.length > 0 ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 max-h-96 overflow-auto pr-2">
+         {moveHistory.map((move, index) => (
+  <div key={index} 
+       className={`${index % 2 === 0 ? 'text-amber-300' : 'text-amber-100'} 
+                   ${index === moveHistory.length - 1 || index === moveHistory.length - 2 ? 'font-bold text-amber-400' : ''}`}>
+    {index % 2 === 0 && (
+      <span className="font-medium text-amber-500 mr-1">{Math.floor(index/2) + 1}.</span>
+    )} {move}
+  </div>
+))}
+        </div>
+      ) : (
+        <div className="text-center text-amber-300 italic py-4">No moves yet</div>
+      )}
+      
+      {moveHistory.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-amber-700">
+          <div className="text-amber-400 font-bold">
+            Last Move: {moveHistory[moveHistory.length - 1]}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 </div>
 {showInfo && (
   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowInfo(false)}>
@@ -987,7 +1087,6 @@ setValidMoves([]);
           />
         )}
       </div>
-    </div>
-  );
+    );
 }
 export default ChessGame;
