@@ -1,0 +1,48 @@
+# New Asgard Chess - Development Guidelines
+
+## Current Status & Projects
+- Fixed favicon paths in layout.tsx for better iOS support
+- Created soundUtils.ts with improved sound handling for mobile devices
+- Implemented Stockfish chess AI integration in src/ai directory
+- Created React hook useChessAI for easy integration
+
+## AI Integration Setup
+To set up the Stockfish AI engine:
+```bash
+# Download Stockfish WASM files
+npm run download-stockfish
+
+# Or use the convenience script
+npm run prepare-ai
+```
+
+## Build & Development Commands
+- `npm run dev` - Start development server with Turbopack
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+- `npm run download-stockfish` - Download Stockfish WASM files
+- `npm run prepare-ai` - Prepare AI integration
+
+## Troubleshooting
+- iOS audio issues: Audio requires user interaction; soundUtils.ts handles this
+- PWA metadata: Check manifest.json and icons match layout.tsx references
+- AI not working: Check that Stockfish files are properly downloaded to public/stockfish/
+
+## Code Style Guidelines
+- TypeScript with strict typing
+- React functional components with hooks
+- Component organization:
+  - Types at top
+  - Helper functions 
+  - Main component with state
+  - JSX at bottom
+- Prefer utilities in separate files (e.g., soundUtils.ts)
+
+## Project Structure
+- `/src/ai` - Stockfish chess AI integration
+- `/src/components` - Reusable UI components
+- `/src/hooks` - Custom React hooks, including useChessAI
+- `/src/types` - TypeScript type definitions
+- `/src/utils` - Utility functions
+- `/public/stockfish` - Stockfish WASM files (after download)

@@ -1,0 +1,5 @@
+// This is a mock file for stockfish.wasm
+// In a real implementation, this would be the WebAssembly binary for Stockfish
+
+// The actual WebAssembly binary file would contain binary data and not JavaScript
+// This file exists only to satisfy the file system structure expected by the mock implementation
