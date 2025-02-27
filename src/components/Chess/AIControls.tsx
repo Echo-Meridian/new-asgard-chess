@@ -5,7 +5,6 @@ import { useChessAI } from '@/hooks/useChessAI';
 import type { DifficultyLevel } from '@/types/chess';
 
 interface AIControlsProps {
-  onPlayAI: () => void;
   onGetHint: () => void;
   isAIEnabled: boolean;
   setAIEnabled: (enabled: boolean) => void;
@@ -16,7 +15,6 @@ interface AIControlsProps {
  * AI Controls component for Chess game
  */
 export default function AIControls({
-  onPlayAI,
   onGetHint,
   isAIEnabled,
   setAIEnabled,

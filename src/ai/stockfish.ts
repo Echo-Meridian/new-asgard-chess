@@ -23,7 +23,7 @@ export interface MoveAnalysis {
 export class StockfishEngine {
   private worker: Worker | null = null;
   private initialized: boolean = false;
-  private messageCallbacks: Map<string, (data: any) => void> = new Map();
+  private messageCallbacks: Map<string, (data: string) => void> = new Map();
   private readonly wasmSupported: boolean = typeof WebAssembly === 'object';
   private commandQueue: string[] = [];
   private isReady: boolean = false;

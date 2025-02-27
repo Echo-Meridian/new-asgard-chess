@@ -176,7 +176,7 @@ function parsePieceChar(char: string): ChessPiece {
   };
   
   return {
-    type: pieceMap[lowerChar] as any,
+    type: pieceMap[lowerChar] as PieceType,
     color: isWhite ? 'white' : 'black'
   };
 }
