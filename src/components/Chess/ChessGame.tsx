@@ -1,22 +1,16 @@
 'use client';
 
+/**
+ * Modified ChessGame component with improved AI integration and draw detection
+ */
+
 import React from 'react';
 import Image from 'next/image';
-import { useState } from 'react';
-
-// Types and Interfaces
-type PieceType = 'king' | 'queen' | 'rook' | 'bishop' | 'knight' | 'pawn';
-type PieceColor = 'white' | 'black';
-
-interface ChessPiece {
-  type: PieceType;
-  color: PieceColor;
-}
-
-interface Position {
-  row: number;
-  col: number;
-}
+import { useState, useEffect } from 'react';
+import AIControls from './AIControls';
+import { useChessAI } from '@/hooks/useChessAI';
+import { playSound, SoundTypes } from '@/utils/soundUtils';
+import type { ChessPiece, PieceColor, Position, PieceType } from '@/types/chess';
 
 function deepCloneBoard(board: (ChessPiece | null)[][]): (ChessPiece | null)[][] {
   return board.map(row => 
@@ -108,50 +102,6 @@ const generateMoveNotation = (
   return notation;
 };
 
-
-  const soundMap = {
-    // Global sounds
-    check: '/sounds/check.mp3',
-    invalid: '/sounds/invalid.mp3',
-    move: '/sounds/move.mp3',
-    capture: '/sounds/capture.mp3',
-    
-    pieces: {
-      black: {
-        pawn: '/sounds/pieces/black/pawn.mp3',
-        rook: '/sounds/pieces/black/rook.mp3',
-        knight: '/sounds/pieces/black/knight.mp3',
-        bishop: '/sounds/pieces/black/bishop.mp3',
-        queen: '/sounds/pieces/black/queen.mp3',
-        king: '/sounds/pieces/black/king.mp3'
-      },
-      white: {
-        pawn: '/sounds/pieces/white/pawn.mp3',
-        rook: '/sounds/pieces/white/rook.mp3',
-        knight: '/sounds/pieces/white/knight.mp3',
-        bishop: '/sounds/pieces/white/bishop.mp3',
-        queen: '/sounds/pieces/white/queen.mp3',
-        king: '/sounds/pieces/white/king.mp3'
-      }
-    }
-  };
-  
-  const playSound = (type: 'move' | 'capture' | 'check' | 'invalid', piece?: ChessPiece) => {
-    if (typeof window === 'undefined') return;
-  
-    try {
-      // Use piece parameter to avoid unused parameter error
-      const pieceType = piece ? piece.type : 'none';
-      console.log(`Playing ${type} sound for ${pieceType}`);
-      
-      const soundPath = soundMap[type];
-      const audio = new Audio(soundPath);
-      audio.volume = 0.5;
-      audio.play().catch(e => console.error('Audio play error:', e));
-    } catch (err) {
-      console.error('Sound error:', err);
-    }
-  };
 // First, let's add a CSS class for the rune effects
 const runeOverlays = {
   normal: "ᛗ", // Mannaz - represents movement
@@ -161,154 +111,219 @@ const runeOverlays = {
 };
 
 const ChessGame = () => {
+  // Core state
+  const [board, setBoard] = useState<(ChessPiece | null)[][]>(initializeBoard());
+  const [currentPlayer, setCurrentPlayer] = useState<PieceColor>('white');
+  const [selectedPiece, setSelectedPiece] = useState<Position | null>(null);
+  const [validMoves, setValidMoves] = useState<Position[]>([]);
+  const [hasMoved, setHasMoved] = useState<{[key: string]: boolean}>({});
+  const [showInfo, setShowInfo] = useState(false);
+  const [enPassantTarget, setEnPassantTarget] = useState<Position | null>(null);
+  const [moveHistory, setMoveHistory] = useState<string[]>([]);
+  const [showMoveHistory, setShowMoveHistory] = useState(false);
+  const [promotionPawn, setPromotionPawn] = useState<{
+    position: Position;
+    color: PieceColor;
+  } | null>(null);
+  const [gameState, setGameState] = useState<{
+    isOver: boolean;
+    winner: PieceColor | null;
+    message: string;
+  }>({
+    isOver: false,
+    winner: null,
+    message: ''
+  });
+  
+  // Draw detection state
+  const [halfMoveCount, setHalfMoveCount] = useState<number>(0); // For 50-move rule
+  const [boardPositions, setBoardPositions] = useState<string[]>([]); // For three-fold repetition
+  
+  // AI state
+  const [isAIEnabled, setAIEnabled] = useState(false);
+  const [isAIThinking, setAIThinking] = useState(false);
+  
+  // Initialize AI
+  const { 
+    getAIMove, 
+    getHint,
+    loading: aiLoading
+  } = useChessAI({ autoInit: true });
+  
+  // Effect to handle AI moves
+  useEffect(() => {
+    let isMounted = true;
+    
+    const makeAIMove = async () => {
+      if (isAIEnabled && currentPlayer === 'black' && !gameState.isOver && !promotionPawn) {
+        setAIThinking(true);
+        try {
+          // Wait a short delay to show the AI is "thinking"
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Get AI move
+          const move = await getAIMove(
+            board, 
+            currentPlayer, 
+            hasMoved, 
+            enPassantTarget
+          );
+          
+          if (move && isMounted) {
+            handleMove(move.from, move.to);
+          }
+        } catch (error) {
+          console.error('AI move error:', error);
+        } finally {
+          if (isMounted) {
+            setAIThinking(false);
+          }
+        }
+      }
+    };
+    
+    makeAIMove();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [currentPlayer, isAIEnabled, gameState.isOver, promotionPawn]);
+  
+  // Handle getting a hint from AI
+  const handleGetHint = async () => {
+    if (gameState.isOver || aiLoading) return;
+    
+    setAIThinking(true);
+    try {
+      const hintPosition = await getHint(board, currentPlayer);
+      
+      if (hintPosition) {
+        // Highlight the square
+        // This could be improved to show both source and target squares
+        setValidMoves(prevMoves => [...prevMoves, hintPosition]);
+        
+        // Clear the hint after 2 seconds
+        setTimeout(() => {
+          setValidMoves([]);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Hint error:', error);
+    } finally {
+      setAIThinking(false);
+    }
+  };
 
   // Check if a king is in check
   function isInCheck(color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
-    console.log(`\n--- Checking if ${color} is in check ---`);
     const kingPos = findKingOnBoard(color, checkBoard);
-    console.log('King position:', kingPos);
     if (!kingPos) return false;
     
     return isSquareUnderAttack(kingPos, color, true, checkBoard);
-}
-// Helper function to find king on a specific board
-function findKingOnBoard(color: PieceColor, checkBoard: (ChessPiece | null)[][]): Position | null {
+  }
+  
+  // Helper function to find king on a specific board
+  function findKingOnBoard(color: PieceColor, checkBoard: (ChessPiece | null)[][]): Position | null {
     for (let row = 0; row < 8; row++) {
-        for (let col = 0; col < 8; col++) {
-            const piece = checkBoard[row][col];
-            if (piece?.type === 'king' && piece.color === color) {
-                return { row, col };
-            }
+      for (let col = 0; col < 8; col++) {
+        const piece = checkBoard[row][col];
+        if (piece?.type === 'king' && piece.color === color) {
+          return { row, col };
         }
+      }
     }
     return null;
-}
-
-function wouldBeInCheck(from: Position, to: Position, color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
-  console.log(`\n--- Would ${color} be in check after move from ${from.row},${from.col} to ${to.row},${to.col} ---`);
-  console.log('\n---Move Analysis---');
-  console.log(`Checking move from ${from.row},${from.col} to ${to.row},${to.col} for ${color}`);
-  
-  const testBoard = deepCloneBoard(checkBoard);  // Use passed in checkBoard instead of global board
-  const movingPiece = testBoard[from.row][from.col];
-  console.log('Moving piece:', movingPiece?.type);
-  
-  // Log initial board state
-  console.log('Initial board state:');
-  testBoard.forEach(row => {
-      console.log(row.map(p => p ? `${p.color[0]}${p.type[0]}` : '--').join(' '));
-  });
-  
-  testBoard[to.row][to.col] = movingPiece;
-  testBoard[from.row][from.col] = null;
-  
-  const kingPos = movingPiece?.type === 'king' ? 
-      to : findKingOnBoard(color, testBoard);
-  console.log('King position:', kingPos);
-  
-  // Log board state after move
-  console.log('Board state after move:');
-  testBoard.forEach(row => {
-      console.log(row.map(p => p ? `${p.color[0]}${p.type[0]}` : '--').join(' '));
-  });
-  
-  if (!kingPos) return false;
-  
-  // Log attacking pieces and their moves
-  for (let row = 0; row < 8; row++) {
-      for (let col = 0; col < 8; col++) {
-          const piece = testBoard[row][col];
-          if (piece && piece.color !== color) {
-              const moves = getBasicMoves(piece, { row, col }, testBoard);
-              if (moves.some(move => move.row === kingPos.row && move.col === kingPos.col)) {
-                  console.log(`King in check from ${piece.color} ${piece.type} at ${row},${col}`);
-                  return true;
-              }
-          }
-      }
   }
-  console.log('Move is safe - king not in check');
-  return false;
-}
-  function isInCheckmate(color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
-    const kingPos = findKingOnBoard(color, checkBoard);
+
+  function wouldBeInCheck(from: Position, to: Position, color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
+    const testBoard = deepCloneBoard(checkBoard);
+    const movingPiece = testBoard[from.row][from.col];
+    
+    testBoard[to.row][to.col] = movingPiece;
+    testBoard[from.row][from.col] = null;
+    
+    const kingPos = movingPiece?.type === 'king' ? 
+      to : findKingOnBoard(color, testBoard);
+    
     if (!kingPos) return false;
     
-
-    const isCurrentlyInCheck = wouldBeInCheck(kingPos, kingPos, color, checkBoard);
-    if (!isCurrentlyInCheck) return false;
+    // Check if any opponent piece can attack the king
     for (let row = 0; row < 8; row++) {
-        for (let col = 0; col < 8; col++) {
-            const piece = checkBoard[row][col];
-            if (piece && piece.color === color) {
-                const moves = getValidMoves(piece, { row, col }, checkBoard);
-                for (const move of moves) {
-                    const testBoard = deepCloneBoard(checkBoard);
-                    testBoard[move.row][move.col] = piece;
-                    testBoard[row][col] = null;
-                    
-                    // Fix: Handle potential null kingPos
-                    const kingPos = piece.type === 'king' ? 
-                        move : findKingOnBoard(color, testBoard);
-                        
-                    if (!kingPos) continue;  // Skip this move if we can't find the king
-                    
-                    let stillInCheck = false;
-                    for (let r = 0; r < 8; r++) {
-                        for (let c = 0; c < 8; c++) {
-                            const attackingPiece = testBoard[r][c];
-                            if (attackingPiece && attackingPiece.color !== color) {
-                                const attackingMoves = getBasicMoves(attackingPiece, { row: r, col: c }, testBoard);
-                                if (attackingMoves.some(m => m.row === kingPos.row && m.col === kingPos.col)) {
-                                    stillInCheck = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (stillInCheck) break;
-                    }
-                    if (!stillInCheck) return false;
-                }
-            }
+      for (let col = 0; col < 8; col++) {
+        const piece = testBoard[row][col];
+        if (piece && piece.color !== color) {
+          const moves = getBasicMoves(piece, { row, col }, testBoard);
+          if (moves.some(move => move.row === kingPos.row && move.col === kingPos.col)) {
+            return true;
+          }
         }
-    }
-    return true;
-}
-    function getBasicMoves(piece: ChessPiece, pos: Position, checkBoard: (ChessPiece | null)[][] = board): Position[] {
-      const moves: Position[] = [];
-      const isInBounds = (row: number, col: number) => 
-          row >= 0 && row < 8 && col >= 0 && col < 8;
-  
-      switch (piece.type) {
-          case 'pawn': {
-              const direction = piece.color === 'white' ? -1 : 1;
-              const startRow = piece.color === 'white' ? 6 : 1;
-              
-              // Use checkBoard instead of board
-              if (isInBounds(pos.row + direction, pos.col) && 
-                  !checkBoard[pos.row + direction][pos.col]) {
-                  moves.push({ row: pos.row + direction, col: pos.col });
-                  
-                  if (pos.row === startRow && !checkBoard[pos.row + 2 * direction][pos.col]) {
-                      moves.push({ row: pos.row + 2 * direction, col: pos.col });
-                  }
-              }
-              
-              [-1, 1].forEach(offset => {
-                  const newRow = pos.row + direction;
-                  const newCol = pos.col + offset;
-                  if (isInBounds(newRow, newCol)) {
-                      // Use checkBoard instead of board
-                      const targetPiece = checkBoard[newRow][newCol];
-                      if (targetPiece && targetPiece.color !== piece.color) {
-                          moves.push({ row: newRow, col: newCol });
-                      }
-                  }
-              });
-              break;
       }
-       // Copy 
-       case 'knight': {
+    }
+    
+    return false;
+  }
+  
+  function isInCheckmate(color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
+    // If not in check, cannot be checkmate
+    if (!isInCheck(color, checkBoard)) return false;
+    
+    // Check if any move can get out of check
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const piece = checkBoard[row][col];
+        if (piece && piece.color === color) {
+          const moves = getValidMoves(piece, { row, col }, checkBoard);
+          
+          for (const move of moves) {
+            // Try the move and see if it gets out of check
+            const testBoard = deepCloneBoard(checkBoard);
+            testBoard[move.row][move.col] = piece;
+            testBoard[row][col] = null;
+            
+            if (!isInCheck(color, testBoard)) {
+              return false; // Found a legal move
+            }
+          }
+        }
+      }
+    }
+    
+    return true; // No legal moves found
+  }
+  
+  function getBasicMoves(piece: ChessPiece, pos: Position, checkBoard: (ChessPiece | null)[][] = board): Position[] {
+    const moves: Position[] = [];
+    const isInBounds = (row: number, col: number) => 
+      row >= 0 && row < 8 && col >= 0 && col < 8;
+  
+    switch (piece.type) {
+      case 'pawn': {
+        const direction = piece.color === 'white' ? -1 : 1;
+        const startRow = piece.color === 'white' ? 6 : 1;
+        
+        if (isInBounds(pos.row + direction, pos.col) && 
+          !checkBoard[pos.row + direction][pos.col]) {
+          moves.push({ row: pos.row + direction, col: pos.col });
+          
+          if (pos.row === startRow && !checkBoard[pos.row + 2 * direction][pos.col]) {
+            moves.push({ row: pos.row + 2 * direction, col: pos.col });
+          }
+        }
+        
+        [-1, 1].forEach(offset => {
+          const newRow = pos.row + direction;
+          const newCol = pos.col + offset;
+          if (isInBounds(newRow, newCol)) {
+            const targetPiece = checkBoard[newRow][newCol];
+            if (targetPiece && targetPiece.color !== piece.color) {
+              moves.push({ row: newRow, col: newCol });
+            }
+          }
+        });
+        break;
+      }
+      // Knight
+      case 'knight': {
         const knightMoves = [
           [-2, -1], [-2, 1], [-1, -2], [-1, 2],
           [1, -2], [1, 2], [2, -1], [2, 1]
@@ -378,98 +393,76 @@ function wouldBeInCheck(from: Position, to: Position, color: PieceColor, checkBo
   
     return moves;
   }
+  
   function isSquareUnderAttack(pos: Position, defenderColor: PieceColor, ignoreCastling: boolean = false, checkBoard: (ChessPiece | null)[][] = board): boolean {
     for (let row = 0; row < 8; row++) {
-        for (let col = 0; col < 8; col++) {
-            const piece = checkBoard[row][col];  // CHANGED: board -> checkBoard
-            if (piece && piece.color !== defenderColor) {
-                const moves = ignoreCastling ? 
-                    getBasicMoves(piece, { row, col }, checkBoard) : 
-                    getValidMoves(piece, { row, col }, checkBoard);
-                if (moves.some(move => move.row === pos.row && move.col === pos.col)) {
-                    return true;
-                }
-            }
+      for (let col = 0; col < 8; col++) {
+        const piece = checkBoard[row][col];
+        if (piece && piece.color !== defenderColor) {
+          const moves = ignoreCastling ? 
+            getBasicMoves(piece, { row, col }, checkBoard) : 
+            getValidMoves(piece, { row, col }, checkBoard);
+          if (moves.some(move => move.row === pos.row && move.col === pos.col)) {
+            return true;
+          }
         }
+      }
     }
     return false;
-}
-
-function getEnPassantMoves(piece: ChessPiece, pos: Position): Position[] {
-  const moves: Position[] = [];
-  if (piece.type === 'pawn' && enPassantTarget) {
-    // Check if pawn is in correct row for en passant
-    if (pos.row === (piece.color === 'white' ? 3 : 4)) {
-      // Check if pawn is adjacent to the target column
-      if (Math.abs(pos.col - enPassantTarget.col) === 1) {
-        moves.push({
-          row: pos.row + (piece.color === 'white' ? -1 : 1),
-          col: enPassantTarget.col
-        });
-      }
-    }
   }
-  return moves;
-}
-function getCastlingMoves(piece: ChessPiece, pos: Position, checkBoard: (ChessPiece | null)[][] = board): Position[] {
-  const moves: Position[] = [];
-  if (
-    piece.type === 'king' && 
-    !hasMoved[`${piece.color}-king`] &&
-    !isSquareUnderAttack(pos, piece.color, true)  // Pass true here
-  ) {
-    const row = piece.color === 'white' ? 7 : 0;
-    
-    // Kingside castling
-    if (!hasMoved[`${piece.color}-rook-right`]) {
-      if (
-        !checkBoard[row][5] && !checkBoard[row][6] && // Squares must be empty
-        !isSquareUnderAttack({ row, col: 5 }, piece.color) &&
-        !isSquareUnderAttack({ row, col: 6 }, piece.color)
-      ) {
-        moves.push({ row, col: 6 });
+
+  function getEnPassantMoves(piece: ChessPiece, pos: Position): Position[] {
+    const moves: Position[] = [];
+    if (piece.type === 'pawn' && enPassantTarget) {
+      // Check if pawn is in correct row for en passant
+      if (pos.row === (piece.color === 'white' ? 3 : 4)) {
+        // Check if pawn is adjacent to the target column
+        if (Math.abs(pos.col - enPassantTarget.col) === 1) {
+          moves.push({
+            row: pos.row + (piece.color === 'white' ? -1 : 1),
+            col: enPassantTarget.col
+          });
+        }
       }
     }
-    
-    // Queenside castling
-    if (!hasMoved[`${piece.color}-rook-left`]) {
-      if (
-        !checkBoard[row][1] && !checkBoard[row][2] && !checkBoard[row][3] && // Squares must be empty
-        !isSquareUnderAttack({ row, col: 2 }, piece.color) &&
-        !isSquareUnderAttack({ row, col: 3 }, piece.color)
-      ) {
-        moves.push({ row, col: 2 });
-      }
-    }
+    return moves;
   }
-  return moves;
-}
+  
+  function getCastlingMoves(piece: ChessPiece, pos: Position, checkBoard: (ChessPiece | null)[][] = board): Position[] {
+    const moves: Position[] = [];
+    if (
+      piece.type === 'king' && 
+      !hasMoved[`${piece.color}-king`] &&
+      !isSquareUnderAttack(pos, piece.color, true, checkBoard)
+    ) {
+      const row = piece.color === 'white' ? 7 : 0;
+      
+      // Kingside castling
+      if (!hasMoved[`${piece.color}-rook-right`]) {
+        if (
+          !checkBoard[row][5] && !checkBoard[row][6] && // Squares must be empty
+          !isSquareUnderAttack({ row, col: 5 }, piece.color, true, checkBoard) &&
+          !isSquareUnderAttack({ row, col: 6 }, piece.color, true, checkBoard)
+        ) {
+          moves.push({ row, col: 6 });
+        }
+      }
+      
+      // Queenside castling
+      if (!hasMoved[`${piece.color}-rook-left`]) {
+        if (
+          !checkBoard[row][1] && !checkBoard[row][2] && !checkBoard[row][3] && // Squares must be empty
+          !isSquareUnderAttack({ row, col: 2 }, piece.color, true, checkBoard) &&
+          !isSquareUnderAttack({ row, col: 3 }, piece.color, true, checkBoard)
+        ) {
+          moves.push({ row, col: 2 });
+        }
+      }
+    }
+    return moves;
+  }
 
-
-
-  // Core state
-  const [board, setBoard] = useState<(ChessPiece | null)[][]>(initializeBoard());
-  const [currentPlayer, setCurrentPlayer] = useState<PieceColor>('white');
-  const [selectedPiece, setSelectedPiece] = useState<Position | null>(null);
-  const [validMoves, setValidMoves] = useState<Position[]>([]);
-  const [hasMoved, setHasMoved] = useState<{[key: string]: boolean}>({});
-  const [showInfo, setShowInfo] = useState(false);
-const [enPassantTarget, setEnPassantTarget] = useState<Position | null>(null);
-const [moveHistory, setMoveHistory] = useState<string[]>([]);
-const [showMoveHistory, setShowMoveHistory] = useState(false);
-const [promotionPawn, setPromotionPawn] = useState<{
-  position: Position;
-  color: PieceColor;
-} | null>(null);
-  const [gameState, setGameState] = useState<{
-    isOver: boolean;
-    winner: PieceColor | null;
-    message: string;
-  }>({
-    isOver: false,
-    winner: null,
-    message: ''
-  });
+  // Get the rune to display for a valid move
   const getRuneForMove = (rowIndex: number, colIndex: number) => {
     if (!selectedPiece) return null;
     
@@ -519,155 +512,99 @@ const [promotionPawn, setPromotionPawn] = useState<{
 
   // Core move validation
   function getValidMoves(piece: ChessPiece, pos: Position, checkBoard: (ChessPiece | null)[][] = board): Position[] {
-    const moves: Position[] = [];
-    const isInBounds = (row: number, col: number) => 
-      row >= 0 && row < 8 && col >= 0 && col < 8;
-
-    switch (piece.type) {
-      case 'pawn': {
-        const direction = piece.color === 'white' ? -1 : 1;
-        const startRow = piece.color === 'white' ? 6 : 1;
-        
-        // Forward move
-        if (isInBounds(pos.row + direction, pos.col) && 
-            !checkBoard[pos.row + direction][pos.col]) {
-          moves.push({ row: pos.row + direction, col: pos.col });
-          
-          // Initial double move
-          if (pos.row === startRow && !checkBoard[pos.row + 2 * direction][pos.col]) {  // CHANGED: board -> checkBoard
-            moves.push({ row: pos.row + 2 * direction, col: pos.col });
-        
-          }
-        }
-        
-        // Captures
-        [-1, 1].forEach(offset => {
-        const newRow = pos.row + direction;
-        const newCol = pos.col + offset;
-        if (isInBounds(newRow, newCol)) {
-          const targetPiece = checkBoard[newRow][newCol];
-          if (targetPiece && targetPiece.color !== piece.color) {
-            moves.push({ row: newRow, col: newCol });
-          }
-        }
-      });
-      break;
-    }
-    // Copy 
-      case 'knight': {
-        const knightMoves = [
-          [-2, -1], [-2, 1], [-1, -2], [-1, 2],
-          [1, -2], [1, 2], [2, -1], [2, 1]
-        ];
-        knightMoves.forEach(([rowDelta, colDelta]) => {
-          const newRow = pos.row + rowDelta;
-          const newCol = pos.col + colDelta;
-          if (isInBounds(newRow, newCol)) {
-            const targetPiece = checkBoard[newRow][newCol];
-            if (!targetPiece || targetPiece.color !== piece.color) {
-              moves.push({ row: newRow, col: newCol });
-            }
-          }
-        });
-        break;
-      }
-
-      case 'king': {
-        const kingMoves = [
-          [-1, -1], [-1, 0], [-1, 1],
-          [0, -1], [0, 1],
-          [1, -1], [1, 0], [1, 1]
-        ];
-        kingMoves.forEach(([rowDelta, colDelta]) => {
-          const newRow = pos.row + rowDelta;
-          const newCol = pos.col + colDelta;
-          if (isInBounds(newRow, newCol)) {
-            const targetPiece = checkBoard[newRow][newCol];
-            if (!targetPiece || targetPiece.color !== piece.color) {
-              moves.push({ row: newRow, col: newCol });
-            }
-          }
-        });
-        break;
-      }
-
-      case 'queen':
-      case 'rook':
-      case 'bishop': {
-        const directions = piece.type === 'rook' 
-          ? [[0, 1], [0, -1], [1, 0], [-1, 0]]
-          : piece.type === 'bishop'
-          ? [[1, 1], [1, -1], [-1, 1], [-1, -1]]
-          : [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-
-        directions.forEach(([rowDelta, colDelta]) => {
-          let newRow = pos.row + rowDelta;
-          let newCol = pos.col + colDelta;
-          
-          while (isInBounds(newRow, newCol)) {
-            const targetPiece = checkBoard[newRow][newCol];
-            if (!targetPiece) {
-              moves.push({ row: newRow, col: newCol });
-            } else {
-              if (targetPiece.color !== piece.color) {
-                moves.push({ row: newRow, col: newCol });
-              }
-              break;
-            }
-            newRow += rowDelta;
-            newCol += colDelta;
-          }
-        });
-        break;
-      }
-    }
+    // Get all possible moves without considering check
+    const moves = getBasicMoves(piece, pos, checkBoard);
+    
     // Add special moves
-if (piece.type === 'pawn') {
-  moves.push(...getEnPassantMoves(piece, pos));
-}
-if (piece.type === 'king') {
-  moves.push(...getCastlingMoves(piece, pos));
-}
+    if (piece.type === 'pawn') {
+      moves.push(...getEnPassantMoves(piece, pos));
+    }
+    if (piece.type === 'king') {
+      moves.push(...getCastlingMoves(piece, pos, checkBoard));
+    }
     
     return moves;
   }
 
   function isStalemate(color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
-    // Find king's current position
-    const kingPos = findKingOnBoard(color, checkBoard);
-    if (!kingPos) return false;
-
-    // If the king is in check, it's not stalemate
-    const isCurrentlyInCheck = wouldBeInCheck(kingPos, kingPos, color, checkBoard);
-    if (isCurrentlyInCheck) return false;
-    // ... rest of stalemate logic
-  
-    // Check if any piece has any legal moves
+    // Not in check, but no legal moves
+    if (isInCheck(color, checkBoard)) return false;
+    
+    // Check if any piece has a legal move
     for (let row = 0; row < 8; row++) {
-        for (let col = 0; col < 8; col++) {
-            const piece = checkBoard[row][col];  // Changed from board to checkBoard
-            if (piece && piece.color === color) {
-                const moves = getValidMoves(piece, { row, col }, checkBoard);  // Pass checkBoard
-                for (const move of moves) {
-                    // Check if this move would be legal (wouldn't put/leave king in check)
-                    if (!wouldBeInCheck({ row, col }, move, color, checkBoard)) {
-                        return false;  // Found a legal move, not stalemate
-                    }
-                }
+      for (let col = 0; col < 8; col++) {
+        const piece = checkBoard[row][col];
+        if (piece && piece.color === color) {
+          const moves = getValidMoves(piece, { row, col }, checkBoard);
+          
+          for (const move of moves) {
+            if (!wouldBeInCheck({ row, col }, move, color, checkBoard)) {
+              return false; // Found a legal move
             }
+          }
         }
+      }
     }
     
-    // No legal moves found
-    return true;
-}
+    return true; // No legal moves found
+  }
+  
+  // Generate a unique representation of the current board position
+  function generateBoardPosition(positionBoard: (ChessPiece | null)[][] = board, positionPlayer: PieceColor = currentPlayer): string {
+    // Convert board to FEN-like notation for the position
+    const position = positionBoard.map(row => 
+      row.map(piece => {
+        if (!piece) return '.';
+        const letter = piece.type === 'knight' ? 'n' : piece.type[0];
+        return piece.color === 'white' ? letter.toUpperCase() : letter;
+      }).join('')
+    ).join('/');
+    
+    // Also include current player and castling rights in the position
+    const castlingOptions = 
+      (!hasMoved['white-king'] && !hasMoved['white-rook-right'] ? 'K' : '') +
+      (!hasMoved['white-king'] && !hasMoved['white-rook-left'] ? 'Q' : '') +
+      (!hasMoved['black-king'] && !hasMoved['black-rook-right'] ? 'k' : '') +
+      (!hasMoved['black-king'] && !hasMoved['black-rook-left'] ? 'q' : '');
+    
+    return `${position}|${positionPlayer}|${castlingOptions}`;
+  }
+  
+  // Check for three-fold repetition
+  function isThreefoldRepetition(): boolean {
+    const currentPosition = generateBoardPosition();
+    
+    // Count occurrences of current position in history
+    let occurrences = 1; // Current position counts as 1
+    
+    for (const position of boardPositions) {
+      if (position === currentPosition) {
+        occurrences++;
+        if (occurrences >= 3) return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  // Check for 50-move rule
+  function isFiftyMoveRule(): boolean {
+    return halfMoveCount >= 100; // 50 moves = 100 half moves
+  }
+  
+  // Check for any type of draw
+  function isDraw(checkBoard: (ChessPiece | null)[][] = board, checkPlayer: PieceColor = currentPlayer): boolean {
+    return (
+      isStalemate(checkPlayer, checkBoard) ||
+      isThreefoldRepetition() ||
+      isFiftyMoveRule()
+    );
+  }
+  
   function handlePromotion(pieceType: PieceType) {
     if (!promotionPawn) return;
     
     const newBoard = deepCloneBoard(board);
-    
-    // Clear any existing pieces at the promotion square
-    newBoard[promotionPawn.position.row][promotionPawn.position.col] = null;
     
     // Add the new promoted piece
     newBoard[promotionPawn.position.row][promotionPawn.position.col] = {
@@ -675,213 +612,250 @@ if (piece.type === 'king') {
       color: promotionPawn.color
     };
     
-    // Log the board state to help debug
-    console.log('Board state after promotion:', newBoard);
-    
     setBoard(newBoard);
     setPromotionPawn(null);
-    setCurrentPlayer(currentPlayer === 'white' ? 'black' : 'white');
+    
+    // Reset half-move counter since pawn was moved
+    setHalfMoveCount(0);
+    
+    // Add current position to history
+    const currentPosition = generateBoardPosition(newBoard, currentPlayer === 'white' ? 'black' : 'white');
+    setBoardPositions(prevPositions => [...prevPositions, currentPosition]);
     
     // Check game state after promotion
     const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
- // Check game state using the new board BEFORE updating any state
-const kingPos = findKingOnBoard(nextPlayer, newBoard);
-if (kingPos) {
-    const wouldBeInCheckResult = wouldBeInCheck(
-        kingPos,
-        kingPos,  // Same position since we're checking current state
-        nextPlayer,
-        newBoard
-    );
-
-    if (wouldBeInCheckResult) {
-        if (isInCheckmate(nextPlayer, newBoard)) {
-            setGameState({
-                isOver: true,
-                winner: currentPlayer,
-                message: `Checkmate! ${currentPlayer} wins!`
-            });
-        } else {
-            setGameState({
-                ...gameState,
-                message: `${nextPlayer} is in check!`
-            });
-        }
-    }
-} else if (isStalemate(nextPlayer)) {
+    
+    if (isInCheck(nextPlayer, newBoard)) {
+      playSound(SoundTypes.CHECK);
+      
+      if (isInCheckmate(nextPlayer, newBoard)) {
+        setGameState({
+          isOver: true,
+          winner: currentPlayer,
+          message: `Checkmate! ${currentPlayer} wins!`
+        });
+      } else {
+        setGameState({
+          ...gameState,
+          message: `${nextPlayer} is in check!`
+        });
+      }
+    } else if (isDraw(newBoard, nextPlayer)) {
+      let drawMessage = "Draw!";
+      
+      if (isStalemate(nextPlayer, newBoard)) {
+        drawMessage = "Stalemate! Game is a draw!";
+      } else if (isThreefoldRepetition()) {
+        drawMessage = "Draw by threefold repetition!";
+      } else if (isFiftyMoveRule()) {
+        drawMessage = "Draw by 50-move rule!";
+      }
+      
       setGameState({
         isOver: true,
         winner: null,
-        message: "Stalemate! Game is a draw!"
+        message: drawMessage
       });
-}}
-
-  // Handle square clicks
-  function handleSquareClick(row: number, col: number) {
-    const checkBoard = deepCloneBoard(board);
-    const piece = checkBoard[row][col];
-    
-    if (selectedPiece) {
-      const isValidMove = validMoves.some(
-        move => move.row === row && move.col === col
-      );
-
-      if (isValidMove) {
-        const wouldBeInCheckResult = wouldBeInCheck(
-            { row: selectedPiece.row, col: selectedPiece.col },
-            { row, col },
-            currentPlayer, checkBoard
-        );
-        console.log('Would be in check:', wouldBeInCheckResult);
-        
-        if (wouldBeInCheckResult) {
-          playSound('invalid');
-          return;
-        }
-        const newBoard = deepCloneBoard(board);
-        const movingPiece = newBoard[selectedPiece.row][selectedPiece.col]!;
-        console.log('Moving piece:', movingPiece);
-        const isCapture = board[row][col] !== null;
-       // In your move handling code where you call playSound
-       console.log('Making move, isCapture:', isCapture);
-       if (isCapture) {
-         console.log('Playing capture sound');
-         playSound('capture');
-       } else {
-         console.log('Playing move sound');
-         playSound('move');
-       }
-      const moveNotation = generateMoveNotation(movingPiece, 
-        { row: selectedPiece.row, col: selectedPiece.col }, 
-        { row, col }, 
-        isCapture);
-        // Handle special moves
-        if (movingPiece.type === 'king') {
-          // Castling
-          if (Math.abs(col - selectedPiece.col) === 2) {
-            const isKingside = col > selectedPiece.col;
-            const rookCol = isKingside ? 7 : 0;
-            const newRookCol = isKingside ? 5 : 3;
-            
-            newBoard[row][col] = movingPiece;
-            newBoard[selectedPiece.row][selectedPiece.col] = null;
-            
-            // Move the rook
-            newBoard[row][newRookCol] = newBoard[row][rookCol];
-            newBoard[row][rookCol] = null;
-            
-            setHasMoved({
-              ...hasMoved,
-              [`${movingPiece.color}-king`]: true,
-              [`${movingPiece.color}-rook-${isKingside ? 'right' : 'left'}`]: true
-            });
-          } else {
-            // Normal king move
-            newBoard[row][col] = movingPiece;
-            newBoard[selectedPiece.row][selectedPiece.col] = null;
-          }
-        } else if (movingPiece.type === 'pawn') {
-          // En passant capture
-          if (
-            enPassantTarget &&
-            col === enPassantTarget.col &&
-            row === (movingPiece.color === 'white' ? enPassantTarget.row - 1 : enPassantTarget.row + 1)
-          ) {
-            newBoard[enPassantTarget.row][enPassantTarget.col] = null;
-          }
-          if (row === 0 || row === 7) {
-            newBoard[selectedPiece.row][selectedPiece.col] = null;  // Add this line
-            setPromotionPawn({
-              position: { row, col },
-              color: movingPiece.color
-            });
-            setBoard(newBoard);  // Add this line
-            return; // Wait for piece selection
-          }
-          
-          // Make the normal move
-          newBoard[row][col] = movingPiece;
-          newBoard[selectedPiece.row][selectedPiece.col] = null;
-          
-          // Set en passant target if pawn moves two squares
-          if (Math.abs(row - selectedPiece.row) === 2) {
-            setEnPassantTarget({
-              row: (row + selectedPiece.row) / 2,
-              col
-            });
-          } else {
-            setEnPassantTarget(null);
-          }
-        } else {
-          // Normal piece move
-          newBoard[row][col] = movingPiece;
-          newBoard[selectedPiece.row][selectedPiece.col] = null;
-        }
-      
-        // Track first moves for castling
-        if (movingPiece.type === 'king' || movingPiece.type === 'rook') {
-          const piece = movingPiece.type === 'king' ? 'king' : 
-            `rook-${selectedPiece.col === 0 ? 'left' : 'right'}`;
-          setHasMoved({
-            ...hasMoved,
-            [`${movingPiece.color}-${piece}`]: true
-          });
-        }
-        setMoveHistory(prev => [...prev, moveNotation]);
-        // After all moves are made on newBoard (after castling, en passant, etc.)
-const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
-
-// Run ALL checks on the final board state
-const nextPlayerKingPos = findKingOnBoard(nextPlayer, newBoard);
-if (nextPlayerKingPos && isInCheck(nextPlayer, newBoard)) {
-  playSound('check');
-    if (isInCheckmate(nextPlayer, newBoard)) {
-        setGameState({
-            isOver: true,
-            winner: currentPlayer,
-            message: `Checkmate! ${currentPlayer} wins!`
-        });
-    } else {
-        setGameState({
-            ...gameState,
-            message: `${nextPlayer} is in check!`
-        });
     }
-} else if (isStalemate(nextPlayer, newBoard)) {
-    setGameState({
+    
+    setCurrentPlayer(nextPlayer);
+  }
+
+  // Handle moving pieces
+  function handleMove(from: Position, to: Position) {
+    const piece = board[from.row][from.col];
+    if (!piece) return;
+    
+    const isValidMove = getValidMoves(piece, from).some(
+      move => move.row === to.row && move.col === to.col
+    );
+    
+    if (!isValidMove || wouldBeInCheck(from, to, currentPlayer)) {
+      playSound(SoundTypes.INVALID);
+      return;
+    }
+    
+    const newBoard = deepCloneBoard(board);
+    const isCapture = board[to.row][to.col] !== null;
+    const isPawnMove = piece.type === 'pawn';
+    
+    // Calculate new half-move count for 50-move rule
+    // Reset on pawn moves or captures
+    const newHalfMoveCount = isPawnMove || isCapture ? 0 : halfMoveCount + 1;
+    setHalfMoveCount(newHalfMoveCount);
+    
+    // Handle the move
+    if (piece.type === 'king' && Math.abs(to.col - from.col) === 2) {
+      // Castling
+      const isKingside = to.col > from.col;
+      const rookCol = isKingside ? 7 : 0;
+      const newRookCol = isKingside ? 5 : 3;
+      
+      newBoard[to.row][to.col] = piece;
+      newBoard[from.row][from.col] = null;
+      
+      // Move the rook
+      newBoard[to.row][newRookCol] = newBoard[to.row][rookCol];
+      newBoard[to.row][rookCol] = null;
+      
+      setHasMoved({
+        ...hasMoved,
+        [`${piece.color}-king`]: true,
+        [`${piece.color}-rook-${isKingside ? 'right' : 'left'}`]: true
+      });
+      
+      playSound(SoundTypes.MOVE);
+    } else if (piece.type === 'pawn') {
+      // En passant capture
+      if (
+        enPassantTarget &&
+        to.col === enPassantTarget.col &&
+        to.row === (piece.color === 'white' ? enPassantTarget.row - 1 : enPassantTarget.row + 1)
+      ) {
+        newBoard[enPassantTarget.row][enPassantTarget.col] = null;
+        newBoard[to.row][to.col] = piece;
+        newBoard[from.row][from.col] = null;
+        playSound(SoundTypes.CAPTURE);
+      } 
+      // Promotion
+      else if (to.row === 0 || to.row === 7) {
+        newBoard[from.row][from.col] = null;
+        setPromotionPawn({
+          position: { row: to.row, col: to.col },
+          color: piece.color
+        });
+        setBoard(newBoard);
+        return;
+      } 
+      // Regular pawn move
+      else {
+        newBoard[to.row][to.col] = piece;
+        newBoard[from.row][from.col] = null;
+        
+        if (isCapture) {
+          playSound(SoundTypes.CAPTURE);
+        } else {
+          playSound(SoundTypes.MOVE);
+        }
+      }
+      
+      // Set en passant target if pawn moves two squares
+      if (Math.abs(to.row - from.row) === 2) {
+        setEnPassantTarget({
+          row: (to.row + from.row) / 2,
+          col: to.col
+        });
+      } else {
+        setEnPassantTarget(null);
+      }
+    } 
+    // Regular piece move
+    else {
+      newBoard[to.row][to.col] = piece;
+      newBoard[from.row][from.col] = null;
+      
+      if (isCapture) {
+        playSound(SoundTypes.CAPTURE);
+      } else {
+        playSound(SoundTypes.MOVE);
+      }
+    }
+    
+    // Track piece movements for castling
+    if (piece.type === 'king' || piece.type === 'rook') {
+      const pieceKey = piece.type === 'king' ? 'king' : 
+        `rook-${from.col === 0 ? 'left' : 'right'}`;
+      setHasMoved({
+        ...hasMoved,
+        [`${piece.color}-${pieceKey}`]: true
+      });
+    }
+    
+    // Add move to history
+    const moveNotation = generateMoveNotation(piece, from, to, isCapture);
+    setMoveHistory(prev => [...prev, moveNotation]);
+    
+    // Add current position to history for three-fold repetition detection
+    const nextPlayer = currentPlayer === 'white' ? 'black' : 'white';
+    const boardPosition = generateBoardPosition(newBoard, nextPlayer);
+    setBoardPositions(prevPositions => [...prevPositions, boardPosition]);
+    
+    // Update board
+    setBoard(newBoard);
+    
+    // Check for check/checkmate/stalemate
+    if (isInCheck(nextPlayer, newBoard)) {
+      playSound(SoundTypes.CHECK);
+      
+      if (isInCheckmate(nextPlayer, newBoard)) {
+        setGameState({
+          isOver: true,
+          winner: currentPlayer,
+          message: `Checkmate! ${currentPlayer} wins!`
+        });
+      } else {
+        setGameState({
+          ...gameState,
+          message: `${nextPlayer} is in check!`
+        });
+      }
+    } else if (isDraw(newBoard, nextPlayer)) {
+      // Determine type of draw
+      let drawMessage = "Draw!";
+      
+      if (isStalemate(nextPlayer, newBoard)) {
+        drawMessage = "Stalemate! Game is a draw!";
+      } else if (isThreefoldRepetition()) {
+        drawMessage = "Draw by threefold repetition!";
+      } else if (isFiftyMoveRule()) {
+        drawMessage = "Draw by 50-move rule!";
+      }
+      
+      setGameState({
         isOver: true,
         winner: null,
-        message: "Stalemate! Game is a draw!"
-    });
-} else {
-    setGameState({
-        ...gameState,
-        message: ''
-    });
-}
-
-// Only after all checks, update the game state
-setBoard(newBoard);
-setCurrentPlayer(nextPlayer);
-setSelectedPiece(null);
-setValidMoves([]);
-
- 
-     
-      } else if (piece?.color === currentPlayer) {
-        setSelectedPiece({ row, col });
-        setValidMoves(getValidMoves(piece, { row, col }));
-      } else {
+        message: drawMessage
+      });
+    } else {
+      setGameState({ ...gameState, message: '' });
+    }
+    
+    // Change turn
+    setCurrentPlayer(nextPlayer);
+    setSelectedPiece(null);
+    setValidMoves([]);
+  }
+  
+  // Handle square clicks
+  function handleSquareClick(row: number, col: number) {
+    if (gameState.isOver || isAIThinking || (currentPlayer === 'black' && isAIEnabled)) return;
+    
+    const piece = board[row][col];
+    
+    if (selectedPiece) {
+      // If clicking on a destination square
+      if (selectedPiece.row !== row || selectedPiece.col !== col) {
+        handleMove(selectedPiece, { row, col });
+      } 
+      // If clicking on the selected piece again, deselect it
+      else {
         setSelectedPiece(null);
         setValidMoves([]);
       }
-    } else if (piece?.color === currentPlayer) {
+    } 
+    // Selecting a new piece
+    else if (piece?.color === currentPlayer) {
       setSelectedPiece({ row, col });
-      setValidMoves(getValidMoves(piece, { row, col }));
+      const legalMoves = getValidMoves(piece, { row, col }).filter(
+        move => !wouldBeInCheck({ row, col }, move, currentPlayer)
+      );
+      setValidMoves(legalMoves);
     }
   }
+  
   return (
-    <div className="flex flex-col items-center justify-center min-h-[100vh] bg-gray-900 p-4"> <div className="w-full max-w-[min(75vh,750px)] aspect-square flex flex-col">
+    <div className="flex flex-col items-center justify-center min-h-[100vh] bg-gray-900 p-4">
+      <div className="w-full max-w-[min(75vh,750px)] aspect-square flex flex-col">
         <div className="bg-gray-800 shadow-2xl rounded-lg p-3 border-2 border-amber-600 flex-1 flex flex-col">
           <h1 className="text-4xl font-bold mb-4 text-center text-amber-400" style={{ fontFamily: 'Marker Felt, Comic Sans MS, cursive' }}>
             New Asgard Chess
@@ -953,118 +927,136 @@ setValidMoves([]);
             )}
           </div>
 
-          <div className="mt-4 flex justify-center gap-4">
-          
-  <button 
-    className="px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg 
-               transition-colors duration-200 shadow-lg hover:shadow-xl"
-    onClick={() => {
-      setMoveHistory([]);
-      setBoard(initializeBoard());
-      setCurrentPlayer('white');
-      setSelectedPiece(null);
-      setValidMoves([]);
-      setGameState({
-        isOver: false,
-        winner: null,
-        message: ''
-      });
-      setHasMoved({});
-      setEnPassantTarget(null);
-      setPromotionPawn(null);
-    }}
-  >
-    New Game
-  </button>
-  
-  <button 
-    className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg 
-               transition-colors duration-200 shadow-lg hover:shadow-xl"
-    onClick={() => setShowInfo(true)}
-    aria-label="Game Information"
-  >
-    ℹ️
-  </button>
-  <button 
-    className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg 
-               transition-colors duration-200 shadow-lg hover:shadow-xl"
-    onClick={() => setShowMoveHistory(!showMoveHistory)}
-    aria-label="Move History"
-  >
-    📜
-  </button>
-</div>
-{showMoveHistory && (
-  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40" 
-       onClick={() => setShowMoveHistory(false)}>
-    <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-xs w-full border-2 border-amber-600 m-4" 
-         onClick={e => e.stopPropagation()}>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold text-amber-400">Move History</h2>
-        <button 
-  className="text-amber-400 hover:text-amber-300 text-xl font-bold"
-  onClick={() => setShowMoveHistory(false)}
->
-  ✕
-</button>
-      </div>
-      
-      {moveHistory.length > 0 ? (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 max-h-96 overflow-auto pr-2">
-         {moveHistory.map((move, index) => (
-  <div key={index} 
-       className={`${index % 2 === 0 ? 'text-amber-300' : 'text-amber-100'} 
-                   ${index === moveHistory.length - 1 || index === moveHistory.length - 2 ? 'font-bold text-amber-400' : ''}`}>
-    {index % 2 === 0 && (
-      <span className="font-medium text-amber-500 mr-1">{Math.floor(index/2) + 1}.</span>
-    )} {move}
-  </div>
-))}
-        </div>
-      ) : (
-        <div className="text-center text-amber-300 italic py-4">No moves yet</div>
-      )}
-      
-      {moveHistory.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-amber-700">
-          <div className="text-amber-400 font-bold">
-            Last Move: {moveHistory[moveHistory.length - 1]}
+          <div className="mt-4 flex justify-between items-center">
+            <div className="flex gap-2">
+              <button 
+                className="px-6 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg 
+                          transition-colors duration-200 shadow-lg hover:shadow-xl"
+                onClick={() => {
+                  setMoveHistory([]);
+                  setBoard(initializeBoard());
+                  setCurrentPlayer('white');
+                  setSelectedPiece(null);
+                  setValidMoves([]);
+                  setGameState({
+                    isOver: false,
+                    winner: null,
+                    message: ''
+                  });
+                  setHasMoved({});
+                  setEnPassantTarget(null);
+                  setPromotionPawn(null);
+                  setHalfMoveCount(0);
+                  setBoardPositions([]);
+                }}
+              >
+                New Game
+              </button>
+              
+              <button 
+                className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg 
+                          transition-colors duration-200 shadow-lg hover:shadow-xl"
+                onClick={() => setShowInfo(true)}
+                aria-label="Game Information"
+              >
+                ℹ️
+              </button>
+              
+              <button 
+                className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg 
+                          transition-colors duration-200 shadow-lg hover:shadow-xl"
+                onClick={() => setShowMoveHistory(!showMoveHistory)}
+                aria-label="Move History"
+              >
+                📜
+              </button>
+            </div>
+            
+            <AIControls
+              onGetHint={handleGetHint}
+              isAIEnabled={isAIEnabled}
+              setAIEnabled={setAIEnabled}
+              isAIThinking={isAIThinking}
+            />
           </div>
         </div>
-      )}
-    </div>
-  </div>
-)}
-</div>
-{showInfo && (
-  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowInfo(false)}>
-  <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-md border-2 border-amber-600" onClick={e => e.stopPropagation()}>
-    <h2 className="text-2xl font-bold text-amber-400 mb-4">New Asgard Chess</h2>
-    <p className="text-gray-200 mb-4">
-    A Norse-themed chess game for Sam&apos;s adventures in New Asgard.
-    </p>
-    <div className="text-sm text-gray-400 mb-4">
-      Version 1.0.0
-    </div>
-    <div className="text-xs text-gray-500 mb-4 space-y-1">
-      <div>Coming Soon:</div>
-      <ul className="list-disc pl-4 space-y-1">
-        <li>Online multiplayer</li>
-        <li>Game analytics</li>
-        <li>AI opponent</li>
-        <li>Custom piece themes</li>
-      </ul>
-    </div>
-    <button 
-      className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
-      onClick={() => setShowInfo(false)}
-    >
-      Close
-    </button>
-  </div>
-</div>
-)}
-        </div>
+        
+        {showMoveHistory && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40" 
+              onClick={() => setShowMoveHistory(false)}>
+            <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-xs w-full border-2 border-amber-600 m-4" 
+                onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-amber-400">Move History</h2>
+                <button 
+                  className="text-amber-400 hover:text-amber-300 text-xl font-bold"
+                  onClick={() => setShowMoveHistory(false)}
+                >
+                  ✕
+                </button>
+              </div>
+              
+              {moveHistory.length > 0 ? (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 max-h-96 overflow-auto pr-2">
+                {moveHistory.map((move, index) => (
+                  <div key={index} 
+                      className={`${index % 2 === 0 ? 'text-amber-300' : 'text-amber-100'} 
+                                ${index === moveHistory.length - 1 || index === moveHistory.length - 2 ? 'font-bold text-amber-400' : ''}`}>
+                    {index % 2 === 0 && (
+                      <span className="font-medium text-amber-500 mr-1">{Math.floor(index/2) + 1}.</span>
+                    )} {move}
+                  </div>
+                ))}
+                </div>
+              ) : (
+                <div className="text-center text-amber-300 italic py-4">No moves yet</div>
+              )}
+              
+              {moveHistory.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-amber-700">
+                  <div className="text-amber-400 font-bold">
+                    Last Move: {moveHistory[moveHistory.length - 1]}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {showInfo && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowInfo(false)}>
+            <div className="bg-gray-800 p-6 rounded-lg shadow-xl max-w-md border-2 border-amber-600" onClick={e => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold text-amber-400 mb-4">New Asgard Chess</h2>
+              <p className="text-gray-200 mb-4">
+                A Norse-themed chess game for Sam&apos;s adventures in New Asgard.
+              </p>
+              <div className="text-sm text-gray-400 mb-4">
+                Version 2.0.0
+              </div>
+              <div className="text-xs text-gray-500 mb-4 space-y-1">
+                <div>Features:</div>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>Play against Stockfish AI with multiple difficulty levels</li>
+                  <li>Get AI hints for your next best move</li>
+                  <li>Nordic rune effects for moves and special actions</li>
+                  <li>Complete chess rules with castling, en passant, and promotion</li>
+                  <li>Advanced draw detection (stalemate, threefold repetition, 50-move rule)</li>
+                  <li>Mobile-friendly design with optimized sound handling</li>
+                  <li>Full chess notation and game history tracking</li>
+                </ul>
+              </div>
+              <p className="text-xs text-amber-400/80 mb-4 italic">
+                "The pieces move as if guided by the wisdom of Odin himself!"
+              </p>
+              <button 
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
+                onClick={() => setShowInfo(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
         
         {promotionPawn && (
           <PromotionDialog 
@@ -1072,7 +1064,17 @@ setValidMoves([]);
             onSelect={handlePromotion}
           />
         )}
+        
+        {isAIThinking && (
+          <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+            <div className="bg-amber-800 p-4 rounded-lg shadow-xl text-white animate-pulse">
+              AI is thinking...
+            </div>
+          </div>
+        )}
       </div>
-    );
+    </div>
+  );
 }
+
 export default ChessGame;

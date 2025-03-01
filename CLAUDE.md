@@ -1,5 +1,16 @@
 # New Asgard Chess - Development Guidelines
 
+## Version
+Current Version: 2.0.0 (Updated from 0.1.1)
+
+## Game State
+- Complete chess rules implementation (castling, en passant, promotion)
+- Advanced draw detection (stalemate, threefold repetition, 50-move rule)
+- Stockfish AI integration with multiple difficulty levels
+- Norse-themed UI with rune overlays for visualizing moves
+- Sound effects for moves, captures, and check
+- Mobile-friendly responsive design with PWA support
+
 ## Current Status & Projects
 - Fixed favicon paths in layout.tsx for better iOS support
 - Created soundUtils.ts with improved sound handling for mobile devices

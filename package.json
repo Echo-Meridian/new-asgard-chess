@@ -1,10 +1,11 @@
 {
   "name": "new-asgard-chess",
-  "version": "0.1.1",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build-no-lint": "DISABLE_ESLINT_PLUGIN=true next build",
     "start": "next start",
     "lint": "next lint",
     "download-stockfish": "node scripts/download-stockfish.js",
