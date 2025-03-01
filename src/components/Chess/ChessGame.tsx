@@ -6,7 +6,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AIControls from './AIControls';
 import { useChessAI } from '@/hooks/useChessAI';
 import { playSound, SoundTypes } from '@/utils/soundUtils';
@@ -150,70 +150,6 @@ const ChessGame = () => {
     loading: aiLoading
   } = useChessAI({ autoInit: true });
   
-  // Effect to handle AI moves
-  useEffect(() => {
-    let isMounted = true;
-    
-    const makeAIMove = async () => {
-      if (isAIEnabled && currentPlayer === 'black' && !gameState.isOver && !promotionPawn) {
-        setAIThinking(true);
-        try {
-          // Wait a short delay to show the AI is "thinking"
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Get AI move
-          const move = await getAIMove(
-            board, 
-            currentPlayer, 
-            hasMoved, 
-            enPassantTarget
-          );
-          
-          if (move && isMounted) {
-            handleMove(move.from, move.to);
-          }
-        } catch (error) {
-          console.error('AI move error:', error);
-        } finally {
-          if (isMounted) {
-            setAIThinking(false);
-          }
-        }
-      }
-    };
-    
-    makeAIMove();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [currentPlayer, isAIEnabled, gameState.isOver, promotionPawn]);
-  
-  // Handle getting a hint from AI
-  const handleGetHint = async () => {
-    if (gameState.isOver || aiLoading) return;
-    
-    setAIThinking(true);
-    try {
-      const hintPosition = await getHint(board, currentPlayer);
-      
-      if (hintPosition) {
-        // Highlight the square
-        // This could be improved to show both source and target squares
-        setValidMoves(prevMoves => [...prevMoves, hintPosition]);
-        
-        // Clear the hint after 2 seconds
-        setTimeout(() => {
-          setValidMoves([]);
-        }, 2000);
-      }
-    } catch (error) {
-      console.error('Hint error:', error);
-    } finally {
-      setAIThinking(false);
-    }
-  };
-
   // Check if a king is in check
   function isInCheck(color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
     const kingPos = findKingOnBoard(color, checkBoard);
@@ -662,7 +598,7 @@ const ChessGame = () => {
   }
 
   // Handle moving pieces
-  function handleMove(from: Position, to: Position) {
+  const handleMove = useCallback((from: Position, to: Position) => {
     const piece = board[from.row][from.col];
     if (!piece) return;
     
@@ -824,7 +760,71 @@ const ChessGame = () => {
     setCurrentPlayer(nextPlayer);
     setSelectedPiece(null);
     setValidMoves([]);
-  }
+  }, [board, currentPlayer, enPassantTarget, gameState, halfMoveCount, hasMoved]);
+  
+  // Effect to handle AI moves
+  useEffect(() => {
+    let isMounted = true;
+    
+    const makeAIMove = async () => {
+      if (isAIEnabled && currentPlayer === 'black' && !gameState.isOver && !promotionPawn) {
+        setAIThinking(true);
+        try {
+          // Wait a short delay to show the AI is "thinking"
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Get AI move
+          const move = await getAIMove(
+            board, 
+            currentPlayer, 
+            hasMoved, 
+            enPassantTarget
+          );
+          
+          if (move && isMounted) {
+            handleMove(move.from, move.to);
+          }
+        } catch (error) {
+          console.error('AI move error:', error);
+        } finally {
+          if (isMounted) {
+            setAIThinking(false);
+          }
+        }
+      }
+    };
+    
+    makeAIMove();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [currentPlayer, isAIEnabled, gameState.isOver, promotionPawn, board, enPassantTarget, getAIMove, handleMove, hasMoved]);
+  
+  // Handle getting a hint from AI
+  const handleGetHint = async () => {
+    if (gameState.isOver || aiLoading) return;
+    
+    setAIThinking(true);
+    try {
+      const hintPosition = await getHint(board, currentPlayer);
+      
+      if (hintPosition) {
+        // Highlight the square
+        // This could be improved to show both source and target squares
+        setValidMoves(prevMoves => [...prevMoves, hintPosition]);
+        
+        // Clear the hint after 2 seconds
+        setTimeout(() => {
+          setValidMoves([]);
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Hint error:', error);
+    } finally {
+      setAIThinking(false);
+    }
+  };
   
   // Handle square clicks
   function handleSquareClick(row: number, col: number) {
@@ -1046,7 +1046,7 @@ const ChessGame = () => {
                 </ul>
               </div>
               <p className="text-xs text-amber-400/80 mb-4 italic">
-                "The pieces move as if guided by the wisdom of Odin himself!"
+                &quot;The pieces move as if guided by the wisdom of Odin himself!&quot;
               </p>
               <button 
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg"
