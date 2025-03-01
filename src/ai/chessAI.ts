@@ -64,7 +64,7 @@ export class ChessAI {
     board: (ChessPiece | null)[][], 
     currentPlayer: PieceColor,
     castlingRights: {[key: string]: boolean} = {},
-    enPassantTarget: { row: number, col: number } | null = null
+    enPassantTarget: Position | null = null
   ): Promise<Move | null> {
     if (!this.initialized) {
       const success = await this.init();
