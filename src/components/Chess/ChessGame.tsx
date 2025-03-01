@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Modified ChessGame component with improved AI integration and draw detection
+ * ChessGame component with Stockfish AI integration and draw detection
  */
 
 import React from 'react';
@@ -147,8 +147,20 @@ const ChessGame = () => {
   const { 
     getAIMove, 
     getHint,
-    loading: aiLoading
+    loading: aiLoading,
+    initialized: aiInitialized,
+    error: aiError
   } = useChessAI({ autoInit: true });
+  
+  // Log AI status for debugging
+  useEffect(() => {
+    console.log('AI Status:', { 
+      initialized: aiInitialized, 
+      loading: aiLoading, 
+      error: aiError,
+      enabled: isAIEnabled
+    });
+  }, [aiInitialized, aiLoading, aiError, isAIEnabled]);
   
   // Check if a king is in check
   function isInCheck(color: PieceColor, checkBoard: (ChessPiece | null)[][] = board): boolean {
@@ -768,11 +780,13 @@ const ChessGame = () => {
     
     const makeAIMove = async () => {
       if (isAIEnabled && currentPlayer === 'black' && !gameState.isOver && !promotionPawn) {
+        console.log('AI should make a move now');
         setAIThinking(true);
         try {
           // Wait a short delay to show the AI is "thinking"
           await new Promise(resolve => setTimeout(resolve, 500));
           
+          console.log('Requesting AI move...');
           // Get AI move
           const move = await getAIMove(
             board, 
@@ -781,8 +795,12 @@ const ChessGame = () => {
             enPassantTarget
           );
           
+          console.log('AI returned move:', move);
           if (move && isMounted) {
+            console.log('Executing AI move from', move.from, 'to', move.to);
             handleMove(move.from, move.to);
+          } else {
+            console.log('AI did not return a move or component unmounted');
           }
         } catch (error) {
           console.error('AI move error:', error);
@@ -805,11 +823,13 @@ const ChessGame = () => {
   const handleGetHint = async () => {
     if (gameState.isOver || aiLoading) return;
     
+    console.log('Getting hint for current player:', currentPlayer);
     setAIThinking(true);
     try {
       const hintPosition = await getHint(board, currentPlayer);
       
       if (hintPosition) {
+        console.log('Hint received:', hintPosition);
         // Highlight the square
         // This could be improved to show both source and target squares
         setValidMoves(prevMoves => [...prevMoves, hintPosition]);
@@ -818,6 +838,8 @@ const ChessGame = () => {
         setTimeout(() => {
           setValidMoves([]);
         }, 2000);
+      } else {
+        console.log('No hint received from AI');
       }
     } catch (error) {
       console.error('Hint error:', error);

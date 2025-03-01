@@ -18,7 +18,7 @@ export default function AIControls({
   onGetHint,
   isAIEnabled,
   setAIEnabled,
-  isAIThinking,
+  isAIThinking
 }: AIControlsProps) {
   const [showSettings, setShowSettings] = useState(false);
   
@@ -33,11 +33,18 @@ export default function AIControls({
   });
   
   const handleDifficultyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    console.log("Changing difficulty to:", e.target.value);
     setDifficulty(e.target.value as DifficultyLevel);
   };
   
   const handleAIToggle = () => {
+    console.log("Toggling AI from", isAIEnabled, "to", !isAIEnabled);
     setAIEnabled(!isAIEnabled);
+  };
+  
+  const handleGetHint = () => {
+    console.log("Get hint clicked");
+    onGetHint();
   };
   
   return (
@@ -50,7 +57,7 @@ export default function AIControls({
               : 'bg-amber-700 hover:bg-amber-600'} 
             text-white font-medium`}
           onClick={handleAIToggle}
-          disabled={loading}
+          disabled={loading || isAIThinking}
         >
           {isAIEnabled ? 'AI: ON' : 'AI: OFF'}
         </button>
@@ -67,8 +74,8 @@ export default function AIControls({
         <button
           className="px-4 py-2 bg-amber-700 hover:bg-amber-600 text-white rounded-lg 
                    transition-colors duration-200 shadow-lg"
-          onClick={onGetHint}
-          disabled={loading || !isAIEnabled}
+          onClick={handleGetHint}
+          disabled={loading || isAIThinking}
           aria-label="Get Hint"
         >
           💡
@@ -84,7 +91,7 @@ export default function AIControls({
                 value={difficulty}
                 onChange={handleDifficultyChange}
                 className="ml-2 bg-amber-700 text-white px-2 py-1 rounded border border-amber-500"
-                disabled={loading}
+                disabled={loading || isAIThinking}
               >
                 <option value="easy">Easy</option>
                 <option value="medium">Medium</option>
@@ -99,14 +106,6 @@ export default function AIControls({
               {initialized && !loading && !error && 
                 <span className="text-green-400">Stockfish AI ready ✓</span>}
             </div>
-          </div>
-        </div>
-      )}
-      
-      {isAIThinking && (
-        <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-amber-800 p-4 rounded-lg shadow-xl text-white animate-pulse">
-            AI is thinking...
           </div>
         </div>
       )}

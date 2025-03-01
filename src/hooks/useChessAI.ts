@@ -24,16 +24,20 @@ export function useChessAI(options: {
   
   // Initialize the AI
   const init = useCallback(async () => {
+    console.log('Initializing Chess AI...');
     try {
       setLoading(true);
       setError(null);
       
       const success = await chessAI.init();
+      console.log('Chess AI initialization result:', success);
       setInitialized(success);
       
       if (success) {
         await chessAI.setDifficulty(difficulty);
+        console.log('Chess AI difficulty set to:', difficulty);
       } else {
+        console.error('Failed to initialize chess AI');
         setError('Failed to initialize chess AI');
       }
     } catch (err) {
@@ -47,14 +51,18 @@ export function useChessAI(options: {
   
   // Set the difficulty level
   const setDifficulty = useCallback(async (level: DifficultyLevel) => {
+    console.log('Setting difficulty to:', level);
     setDifficultyState(level);
     
     if (initialized) {
       try {
         await chessAI.setDifficulty(level);
+        console.log('Difficulty set successfully to:', level);
       } catch (err) {
         console.error('Error setting difficulty:', err);
       }
+    } else {
+      console.log('AI not initialized yet, will set difficulty after initialization');
     }
   }, [initialized]);
   
@@ -65,7 +73,9 @@ export function useChessAI(options: {
     castlingRights: {[key: string]: boolean} = {},
     enPassantTarget: Position | null = null
   ): Promise<Move | null> => {
+    console.log('Getting AI move, initialized:', initialized);
     if (!initialized) {
+      console.log('AI not initialized, initializing now...');
       await init();
     }
     
@@ -73,6 +83,7 @@ export function useChessAI(options: {
       setLoading(true);
       setError(null);
       
+      console.log('Requesting best move for player:', currentPlayer);
       const move = await chessAI.getBestMove(
         board, 
         currentPlayer, 
@@ -80,6 +91,7 @@ export function useChessAI(options: {
         enPassantTarget
       );
       
+      console.log('AI returned move:', move);
       return move;
     } catch (err) {
       console.error('Error getting AI move:', err);
@@ -95,7 +107,9 @@ export function useChessAI(options: {
     board: (ChessPiece | null)[][], 
     currentPlayer: PieceColor
   ): Promise<Position | null> => {
+    console.log('Getting hint, initialized:', initialized);
     if (!initialized) {
+      console.log('AI not initialized, initializing now...');
       await init();
     }
     
@@ -103,7 +117,10 @@ export function useChessAI(options: {
       setLoading(true);
       setError(null);
       
-      return await chessAI.getHint(board, currentPlayer);
+      console.log('Requesting hint for player:', currentPlayer);
+      const hintPosition = await chessAI.getHint(board, currentPlayer);
+      console.log('AI returned hint position:', hintPosition);
+      return hintPosition;
     } catch (err) {
       console.error('Error getting hint:', err);
       setError(err instanceof Error ? err.message : 'Error calculating hint');
@@ -139,10 +156,12 @@ export function useChessAI(options: {
   // Clean up on unmount
   useEffect(() => {
     if (autoInit) {
+      console.log('Auto-initializing Chess AI');
       init();
     }
     
     return () => {
+      console.log('Disposing Chess AI');
       chessAI.dispose();
     };
   }, [autoInit, init]);
