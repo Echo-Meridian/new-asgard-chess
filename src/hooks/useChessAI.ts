@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { chessAI } from '@/ai/chessAI';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { stockfish, StockfishConfig } from '@/ai/stockfish';
+import { boardToFEN } from '@/ai/fen-converter';
+import { uciToMove } from '@/ai/move-parser';
+import { playSound, SoundTypes } from '@/utils/soundUtils';
 import type { 
   ChessPiece, 
   PieceColor, 
@@ -8,144 +11,271 @@ import type {
   DifficultyLevel 
 } from '@/types/chess';
 
-/**
- * Hook for using the Chess AI in React components
- */
-export function useChessAI(options: {
+// Difficulty level settings
+export const DIFFICULTY_SETTINGS: Record<DifficultyLevel, StockfishConfig> = {
+  easy: { elo: 1350, depth: 5, time: 1000 },
+  medium: { elo: 1600, depth: 8, time: 1500 },
+  hard: { elo: 1900, depth: 12, time: 2000 },
+  master: { elo: 2400, depth: 15, time: 3000 }
+};
+
+// Hook options
+interface UseChessAIOptions {
   autoInit?: boolean;
   initialDifficulty?: DifficultyLevel;
-} = {}) {
+}
+
+/**
+ * Hook for using the Chess AI in React components
+ * 
+ * This hook provides a clean interface to the Stockfish engine and handles
+ * initialization, state management, and error handling.
+ */
+export function useChessAI(options: UseChessAIOptions = {}) {
   const { autoInit = true, initialDifficulty = 'medium' } = options;
   
+  // State
   const [initialized, setInitialized] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [difficulty, setDifficultyState] = useState<DifficultyLevel>(initialDifficulty);
   
-  // Initialize the AI
+  // Refs to prevent initialization loops
+  const isInitializingRef = useRef(false);
+  const initAttemptCountRef = useRef(0);
+  const difficultyRef = useRef(initialDifficulty);
+  const maxInitAttempts = 3;
+  
+  // Update ref when difficulty changes
+  useEffect(() => {
+    difficultyRef.current = difficulty;
+  }, [difficulty]);
+  
+  /**
+   * Initialize the AI engine
+   */
   const init = useCallback(async () => {
-    console.log('Initializing Chess AI...');
+    // Prevent concurrent initialization attempts
+    if (isInitializingRef.current) {
+      return false;
+    }
+    
+    // Check for too many initialization attempts
+    if (initAttemptCountRef.current >= maxInitAttempts) {
+      setError(`Failed to initialize after ${maxInitAttempts} attempts`);
+      return false;
+    }
+    
+    isInitializingRef.current = true;
+    initAttemptCountRef.current++;
+    
     try {
       setLoading(true);
       setError(null);
       
-      const success = await chessAI.init();
-      console.log('Chess AI initialization result:', success);
-      setInitialized(success);
+      const success = await stockfish.init();
       
       if (success) {
-        await chessAI.setDifficulty(difficulty);
-        console.log('Chess AI difficulty set to:', difficulty);
+        // Set difficulty
+        const settings = DIFFICULTY_SETTINGS[difficultyRef.current];
+        if (settings.elo) {
+          await stockfish.setSkillLevel(settings.elo);
+        }
+        
+        setInitialized(true);
+        return true;
       } else {
-        console.error('Failed to initialize chess AI');
         setError('Failed to initialize chess AI');
+        setInitialized(false);
+        return false;
       }
     } catch (err) {
-      console.error('Error initializing AI:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       setInitialized(false);
+      return false;
     } finally {
       setLoading(false);
+      isInitializingRef.current = false;
     }
-  }, [difficulty]);
+  }, []);
   
-  // Set the difficulty level
+  /**
+   * Set the difficulty level
+   */
   const setDifficulty = useCallback(async (level: DifficultyLevel) => {
-    console.log('Setting difficulty to:', level);
     setDifficultyState(level);
     
     if (initialized) {
       try {
-        await chessAI.setDifficulty(level);
-        console.log('Difficulty set successfully to:', level);
+        const settings = DIFFICULTY_SETTINGS[level];
+        if (settings.elo) {
+          await stockfish.setSkillLevel(settings.elo);
+        }
       } catch (err) {
         console.error('Error setting difficulty:', err);
       }
-    } else {
-      console.log('AI not initialized yet, will set difficulty after initialization');
     }
   }, [initialized]);
   
-  // Get the AI's move
+  /**
+   * Get the best move from the AI
+   */
   const getAIMove = useCallback(async (
-    board: (ChessPiece | null)[][], 
+    board: (ChessPiece | null)[][],
     currentPlayer: PieceColor,
-    castlingRights: {[key: string]: boolean} = {},
+    castlingRights: { [key: string]: boolean } = {},
     enPassantTarget: Position | null = null
   ): Promise<Move | null> => {
-    console.log('Getting AI move, initialized:', initialized);
+    // Ensure the AI is initialized
+    if (!initialized && !isInitializingRef.current) {
+      const success = await init();
+      if (!success) {
+        return null;
+      }
+    }
+    
     if (!initialized) {
-      console.log('AI not initialized, initializing now...');
-      await init();
+      return null;
     }
     
     try {
       setLoading(true);
       setError(null);
       
-      console.log('Requesting best move for player:', currentPlayer);
-      const move = await chessAI.getBestMove(
-        board, 
-        currentPlayer, 
-        castlingRights, 
-        enPassantTarget
-      );
+      // Convert board to FEN
+      const fen = boardToFEN(board, currentPlayer, castlingRights, enPassantTarget);
       
-      console.log('AI returned move:', move);
+      // Set position
+      await stockfish.setPosition(fen);
+      
+      // Get settings for current difficulty
+      const settings = DIFFICULTY_SETTINGS[difficulty];
+      
+      // Get best move
+      const bestMoveUci = await stockfish.getBestMove(settings);
+      
+      if (!bestMoveUci) {
+        return null;
+      }
+      
+      // Convert UCI move to our Move format
+      const move = uciToMove(bestMoveUci);
+      
+      // Play sound
+      playSound(SoundTypes.MOVE);
+      
       return move;
     } catch (err) {
-      console.error('Error getting AI move:', err);
       setError(err instanceof Error ? err.message : 'Error calculating move');
       return null;
     } finally {
       setLoading(false);
     }
-  }, [initialized, init]);
+  }, [initialized, init, difficulty]);
   
-  // Get a hint for the player
+  /**
+   * Get a hint (best move destination) for the current player
+   */
   const getHint = useCallback(async (
-    board: (ChessPiece | null)[][], 
-    currentPlayer: PieceColor
+    board: (ChessPiece | null)[][],
+    currentPlayer: PieceColor,
+    castlingRights: { [key: string]: boolean } = {},
+    enPassantTarget: Position | null = null
   ): Promise<Position | null> => {
-    console.log('Getting hint, initialized:', initialized);
+    // Ensure the AI is initialized
+    if (!initialized && !isInitializingRef.current) {
+      const success = await init();
+      if (!success) {
+        return null;
+      }
+    }
+    
     if (!initialized) {
-      console.log('AI not initialized, initializing now...');
-      await init();
+      return null;
     }
     
     try {
       setLoading(true);
       setError(null);
       
-      console.log('Requesting hint for player:', currentPlayer);
-      const hintPosition = await chessAI.getHint(board, currentPlayer);
-      console.log('AI returned hint position:', hintPosition);
-      return hintPosition;
+      // Convert board to FEN
+      const fen = boardToFEN(board, currentPlayer, castlingRights, enPassantTarget);
+      
+      // Set position
+      await stockfish.setPosition(fen);
+      
+      // Get settings for current difficulty
+      const settings = DIFFICULTY_SETTINGS[difficulty];
+      
+      // Analyze position
+      const analysis = await stockfish.analyzePosition(settings);
+      
+      if (!analysis.move) {
+        return null;
+      }
+      
+      // Convert UCI move to our Move format
+      const move = uciToMove(analysis.move);
+      
+      // Return destination position
+      return move.to;
     } catch (err) {
-      console.error('Error getting hint:', err);
       setError(err instanceof Error ? err.message : 'Error calculating hint');
       return null;
     } finally {
       setLoading(false);
     }
-  }, [initialized, init]);
+  }, [initialized, init, difficulty]);
   
-  // Analyze the position
+  /**
+   * Analyze the current position
+   */
   const analyzePosition = useCallback(async (
-    board: (ChessPiece | null)[][], 
-    currentPlayer: PieceColor
+    board: (ChessPiece | null)[][],
+    currentPlayer: PieceColor,
+    castlingRights: { [key: string]: boolean } = {},
+    enPassantTarget: Position | null = null
   ) => {
+    // Ensure the AI is initialized
+    if (!initialized && !isInitializingRef.current) {
+      const success = await init();
+      if (!success) {
+        return { bestMove: null, score: 0, depth: 0 };
+      }
+    }
+    
     if (!initialized) {
-      await init();
+      return { bestMove: null, score: 0, depth: 0 };
     }
     
     try {
       setLoading(true);
       setError(null);
       
-      return await chessAI.analyzePosition(board, currentPlayer);
+      // Convert board to FEN
+      const fen = boardToFEN(board, currentPlayer, castlingRights, enPassantTarget);
+      
+      // Set position
+      await stockfish.setPosition(fen);
+      
+      // Use higher depth for analysis
+      const analysisConfig: StockfishConfig = {
+        depth: 15,
+        time: 2000
+      };
+      
+      // Analyze position
+      const analysis = await stockfish.analyzePosition(analysisConfig);
+      
+      // Convert UCI move to our Move format
+      const bestMove = analysis.move ? uciToMove(analysis.move) : null;
+      
+      return {
+        bestMove,
+        score: analysis.score,
+        depth: analysis.depth
+      };
     } catch (err) {
-      console.error('Error analyzing position:', err);
       setError(err instanceof Error ? err.message : 'Error analyzing position');
       return { bestMove: null, score: 0, depth: 0 };
     } finally {
@@ -153,18 +283,36 @@ export function useChessAI(options: {
     }
   }, [initialized, init]);
   
-  // Clean up on unmount
+  // Initialize AI on mount if autoInit is true
   useEffect(() => {
+    // Reset initialization state on mount
+    initAttemptCountRef.current = 0;
+    
     if (autoInit) {
-      console.log('Auto-initializing Chess AI');
-      init();
+      init().catch(err => console.error('Auto-init failed:', err));
     }
     
+    // Clean up on unmount
     return () => {
-      console.log('Disposing Chess AI');
-      chessAI.dispose();
+      stockfish.dispose();
     };
   }, [autoInit, init]);
+  
+  // Reset error counter when component receives focus
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        initAttemptCountRef.current = 0;
+      }
+    };
+    
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
+  }, []);
   
   return {
     initialized,

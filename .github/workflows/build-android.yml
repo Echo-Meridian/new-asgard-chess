@@ -1,0 +1,60 @@
+name: Build Stockfish for Android
+
+on:
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Clone Stockfish
+      run: |
+        git clone https://github.com/official-stockfish/Stockfish.git
+        cd Stockfish
+        git checkout sf_15  # Use a stable release tag
+    
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r25b
+    
+    - name: Build for ARM64
+      run: |
+        cd Stockfish/src
+        export ANDROID_NDK=$ANDROID_NDK_HOME
+        export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+        make -j2 build ARCH=armv8 COMP=ndk target=android-arm64 \
+          EXTRALDFLAGS="-static-libstdc++ -static-libgcc" \
+          CXX=aarch64-linux-android21-clang++ \
+          CC=aarch64-linux-android21-clang \
+          EXE=stockfish-android-arm64 \
+          STRIP=aarch64-linux-android-strip
+    
+    - name: Build for ARMv7
+      run: |
+        cd Stockfish/src
+        export ANDROID_NDK=$ANDROID_NDK_HOME
+        export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+        make -j2 build ARCH=armv7-neon COMP=ndk target=android-arm \
+          EXTRALDFLAGS="-static-libstdc++ -static-libgcc" \
+          CXX=armv7a-linux-androideabi21-clang++ \
+          CC=armv7a-linux-androideabi21-clang \
+          EXE=stockfish-android-armv7 \
+          STRIP=arm-linux-androideabi-strip
+    
+    - name: Package binaries
+      run: |
+        mkdir -p android-binaries/arm64-v8a
+        mkdir -p android-binaries/armeabi-v7a
+        cp Stockfish/src/stockfish-android-arm64 android-binaries/arm64-v8a/stockfish
+        cp Stockfish/src/stockfish-android-armv7 android-binaries/armeabi-v7a/stockfish
+        zip -r stockfish-android.zip android-binaries
+    
+    - name: Upload Android binaries
+      uses: actions/upload-artifact@v3
+      with:
+        name: stockfish-android
+        path: stockfish-android.zip

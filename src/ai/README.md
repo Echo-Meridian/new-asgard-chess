@@ -1,32 +1,48 @@
-# Chess AI Integration 
+# Chess AI Cross-Platform Implementation
 
-This directory will contain the Stockfish chess engine integration. 
+## Overview
 
-## Planned Implementation
+This module provides a cross-platform implementation for chess AI using Stockfish. The architecture is designed to work on both iOS and Android, with a clean interface between the game logic and the AI engine.
 
-1. Download the Stockfish WASM binary from https://github.com/lichess-org/stockfish.wasm/releases/ and place it in `/public/stockfish/`
+## File Structure
 
-2. Create the following files:
-   - `stockfish.ts` - Main interface to the engine
-   - `engine.ts` - Manages communication with Stockfish
-   - `analysis.ts` - Functions for analyzing positions
-   - `moveGeneration.ts` - Functions for generating AI moves
+- **stockfish.ts**: Platform-agnostic interface
+- **fen-converter.ts**: Board to FEN conversion utility
+- **move-parser.ts**: UCI to Move conversion utility
+- **/platform**
+  - **stockfish-ios.ts**: iOS-specific implementation
+  - **stockfish-android.ts**: Android-specific implementation
 
-3. Implement difficulty levels:
-   - Easy (Elo ~1000)
-   - Medium (Elo ~1500)
-   - Hard (Elo ~2000)
-   - Master (Elo ~2500)
+## Implementation Strategy
 
-## Usage
+The implementation follows a clean architecture with:
 
-The AI will be integrated into ChessGame.tsx with options for:
-- Playing against AI
-- Getting move hints
-- Position analysis
-- Setting difficulty
+1. **Platform Abstraction**: Common interface with platform-specific implementations
+2. **Game Logic Separation**: AI logic separated from chess game logic
+3. **Mobile Optimization**: Configured for performance and battery life
+4. **Simplified API**: Clean, consistent API for the game components
 
-## Resources
+## Interface Design
 
-- Stockfish.js docs: https://github.com/lichess-org/stockfish.wasm
-- WASM vs JS performance: https://lichess.org/blog/XlRW5RIAAB8AUJJ-/stockfish-11-wasm-port
+```typescript
+interface StockfishEngine {
+  init(): Promise<boolean>;
+  setPosition(fen: string): Promise<void>;
+  getBestMove(config: StockfishConfig): Promise<string>;
+  analyzePosition(config: StockfishConfig): Promise<MoveAnalysis>;
+  setSkillLevel(elo: number): Promise<void>;
+  dispose(): void;
+}
+```
+
+## Mobile Optimizations
+
+- Memory usage: 16MB hash table
+- Threading: 1-2 threads maximum
+- Controlled search depth
+- No background analysis (pondering)
+- Clean resource management
+
+## Implementation Notes
+
+All files use TypeScript with consistent error handling and clean async patterns. The implementation includes a JavaScript fallback for immediate testing while native implementations are developed.

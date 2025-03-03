@@ -1,9 +1,15 @@
 /**
- * Stockfish chess engine integration
+ * Stockfish chess engine interface
+ * A cross-platform, streamlined implementation focused on simplicity and reliability
+ * Supporting Web, iOS, and Android platforms
  */
+// stockfish.ts
+import { Platform } from 'react-native';
+import { StockfishIOS } from './platform/stockfish-ios';
+import { StockfishAndroid } from './platform/stockfish-android';
 
-import { createStockfishWorker } from '@/utils/workerUtils';
-
+// Export the platform-specific implementation
+export const Stockfish = Platform.OS === 'ios' ? StockfishIOS : StockfishAndroid;
 // Configuration options for Stockfish engine
 export interface StockfishConfig {
   depth?: number;   // Search depth (higher = stronger but slower)
@@ -16,245 +22,148 @@ export interface MoveAnalysis {
   move: string;     // Move in UCI format (e.g. "e2e4")
   score: number;    // Centipawn score
   depth: number;    // Depth of analysis
-  line?: string[];  // Principal variation (sequence of best moves)
 }
 
 /**
- * Main Stockfish engine interface
+ * Platform-agnostic Stockfish engine interface
+ * This defines the common interface that all platform-specific implementations must follow
  */
-export class StockfishEngine {
-  private worker: Worker | null = null;
-  private initialized: boolean = false;
-  private messageCallbacks: Map<string, (data: string) => void> = new Map();
-  private readonly wasmSupported: boolean = typeof WebAssembly === 'object';
-  private commandQueue: string[] = [];
-  private isReady: boolean = false;
+export interface StockfishEngine {
+  init(): Promise<boolean>;
+  setPosition(fen: string): Promise<void>;
+  getBestMove(config?: StockfishConfig): Promise<string>;
+  analyzePosition(config?: StockfishConfig): Promise<MoveAnalysis>;
+  setSkillLevel(elo: number): Promise<void>;
+  stop?(): Promise<void>;
+  dispose(): void;
+}
+
+/**
+ * Platform detection utility
+ */
+export function detectPlatform(): 'web' | 'ios' | 'android' {
+  // In a real implementation, this would use more sophisticated detection
+  // For now, we'll assume we're in a web environment
   
-  /**
-   * Initialize the Stockfish engine
-   */
-  async init(): Promise<void> {
-    if (this.initialized) return;
-    
-    if (typeof window === 'undefined') {
-      console.error('Stockfish engine can only be initialized in browser environment');
-      return;
-    }
-    
-    try {
-      // Use a static worker path to avoid Turbopack errors
-      this.worker = createStockfishWorker();
-      
-      // Set up message handling - override any existing handler set by workerUtils
-      console.log('Setting up Stockfish message handler');
-      
-      // Wait a moment for the workerUtils diagnostic handler to process initial messages
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Set our handler for ongoing communication
-      this.worker.onmessage = (e) => this.handleMessage(e.data);
-      
-      // Send initial UCI command and wait for readiness
-      await this.sendCommand('uci');
-      await this.sendCommand('isready');
-      
-      this.initialized = true;
-      console.log('Stockfish engine initialized successfully');
-      
-      // Process any queued commands
-      while (this.commandQueue.length > 0) {
-        const cmd = this.commandQueue.shift();
-        if (cmd) await this.sendCommand(cmd);
-      }
-    } catch (error) {
-      console.error('Failed to initialize Stockfish engine:', error);
-      throw new Error('Stockfish initialization failed');
+  // Check for React Native environment
+  const isReactNative = typeof navigator !== 'undefined' && navigator.product === 'ReactNative';
+  
+  if (isReactNative) {
+    // Check for iOS vs Android
+    if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      return 'ios';
+    } else {
+      return 'android';
     }
   }
   
-  /**
-   * Set position on the board using FEN notation
-   */
-  async setPosition(fen: string): Promise<void> {
-    await this.sendCommand(`position fen ${fen}`);
-  }
+  // Default to web
+  return 'web';
+}
+
+/**
+ * Factory function to create a platform-specific Stockfish engine instance
+ */
+async function createStockfishEngine(): Promise<StockfishEngine> {
+  const platform = detectPlatform();
   
-  /**
-   * Set position from a sequence of moves from the starting position
-   */
-  async setPositionFromMoves(moves: string[]): Promise<void> {
-    await this.sendCommand(`position startpos moves ${moves.join(' ')}`);
-  }
-  
-  /**
-   * Get the best move for the current position
-   */
-  async getBestMove(config: StockfishConfig = {}): Promise<string> {
-    const { depth = 15, time = 1000 } = config;
-    
-    return new Promise((resolve) => {
-      const moveCallback = (data: string) => {
-        const match = data.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
-        if (match) {
-          resolve(match[1]);
-        }
-      };
-      
-      this.messageCallbacks.set('bestmove', moveCallback);
-      
-      // Set parameters based on config
-      if (config.elo) {
-        this.setSkillLevel(config.elo);
-      }
-      
-      this.sendCommand(`go depth ${depth} movetime ${time}`);
-    });
-  }
-  
-  /**
-   * Analyze the current position
-   */
-  async analyzePosition(config: StockfishConfig = {}): Promise<MoveAnalysis> {
-    const { depth = 15, time = 1000 } = config;
-    
-    return new Promise((resolve) => {
-      let bestAnalysis: MoveAnalysis | null = null;
-      
-      const analysisCallback = (data: string) => {
-        // Parse info string for move analysis
-        if (data.startsWith('info depth')) {
-          const scoreMatch = data.match(/score cp (-?\d+)/);
-          const depthMatch = data.match(/depth (\d+)/);
-          const pv = data.match(/pv (.+)/);
-          
-          if (scoreMatch && depthMatch && pv) {
-            const score = parseInt(scoreMatch[1]);
-            const depth = parseInt(depthMatch[1]);
-            const moves = pv[1].split(' ');
-            
-            bestAnalysis = {
-              move: moves[0],
-              score,
-              depth,
-              line: moves,
-            };
-          }
-        }
-        
-        // Resolve when bestmove is found
-        if (data.startsWith('bestmove')) {
-          if (bestAnalysis) {
-            resolve(bestAnalysis);
-          } else {
-            const match = data.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
-            resolve({
-              move: match ? match[1] : '',
-              score: 0,
-              depth: 0
-            });
-          }
-        }
-      };
-      
-      this.messageCallbacks.set('analysis', analysisCallback);
-      
-      if (config.elo) {
-        this.setSkillLevel(config.elo);
-      }
-      
-      this.sendCommand(`go depth ${depth} movetime ${time}`);
-    });
-  }
-  
-  /**
-   * Set the skill level of the engine (ELO rating)
-   * 
-   * @param elo Target ELO rating (roughly 1000-2800)
-   */
-  async setSkillLevel(elo: number): Promise<void> {
-    // Convert ELO to skill level (0-20)
-    // Formula approximation: skill = (elo - 1000) / 90
-    const skillLevel = Math.max(0, Math.min(20, Math.floor((elo - 1000) / 90)));
-    
-    await this.sendCommand(`setoption name Skill Level value ${skillLevel}`);
-    
-    // Set search depth based on skill level
-    const depth = Math.max(1, Math.min(20, Math.floor(skillLevel / 2)));
-    await this.sendCommand(`setoption name Search Depth value ${depth}`);
-  }
-  
-  /**
-   * Stop the current analysis
-   */
-  async stop(): Promise<void> {
-    await this.sendCommand('stop');
-  }
-  
-  /**
-   * Clean up resources
-   */
-  dispose(): void {
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-      this.initialized = false;
-      this.messageCallbacks.clear();
+  switch (platform) {
+    case 'ios': {
+      const { StockfishEngineIOS } = await import('./platform/stockfish-ios');
+      return new StockfishEngineIOS();
     }
-  }
-  
-  /**
-   * Send a command to the Stockfish engine
-   */
-  private async sendCommand(command: string): Promise<void> {
-    if (!this.isReady && !command.includes('isready')) {
-      this.commandQueue.push(command);
-      return;
+    case 'android': {
+      const { StockfishEngineAndroid } = await import('./platform/stockfish-android');
+      return new StockfishEngineAndroid();
     }
-    
-    if (!this.worker) {
-      throw new Error('Stockfish engine not initialized');
-    }
-    
-    return new Promise<void>((resolve) => {
-      const readyCallback = (data: string) => {
-        if (data.includes('readyok')) {
-          this.isReady = true;
-          resolve();
-        }
-      };
-      
-      if (command === 'isready') {
-        this.messageCallbacks.set('ready', readyCallback);
-      } else {
-        // For other commands, resolve immediately
-        setTimeout(resolve, 0);
-      }
-      
-      this.worker!.postMessage(command);
-    });
-  }
-  
-  /**
-   * Handle messages from the Stockfish worker
-   */
-  private handleMessage(data: string): void {
-    // Add debug log to track all incoming messages
-    console.debug(`Stockfish message: ${data.substring(0, 100)}${data.length > 100 ? '...' : ''}`);
-    
-    // Call all registered callbacks with the message
-    this.messageCallbacks.forEach((callback) => {
-      callback(data);
-    });
-    
-    // Remove callbacks once we get the bestmove
-    if (data.startsWith('bestmove')) {
-      this.messageCallbacks.delete('bestmove');
-      this.messageCallbacks.delete('analysis');
-    }
-    
-    // Remove ready callback once engine is ready
-    if (data.includes('readyok')) {
-      this.messageCallbacks.delete('ready');
+    case 'web':
+    default: {
+      const { StockfishEngineWeb } = await import('./platform/stockfish-web');
+      return new StockfishEngineWeb();
     }
   }
 }
+
+// Create and export a singleton instance
+let _stockfishInstance: StockfishEngine | null = null;
+
+export const stockfish: StockfishEngine = {
+  async init(): Promise<boolean> {
+    if (_stockfishInstance) {
+      return _stockfishInstance.init();
+    }
+    
+    try {
+      _stockfishInstance = await createStockfishEngine();
+      return _stockfishInstance.init();
+    } catch (error) {
+      console.error('Failed to create Stockfish engine:', error);
+      return false;
+    }
+  },
+  
+  async setPosition(fen: string): Promise<void> {
+    if (!_stockfishInstance) {
+      await this.init();
+    }
+    
+    if (!_stockfishInstance) {
+      throw new Error('Stockfish engine initialization failed');
+    }
+    
+    return _stockfishInstance.setPosition(fen);
+  },
+  
+  async getBestMove(config: StockfishConfig = {}): Promise<string> {
+    if (!_stockfishInstance) {
+      await this.init();
+    }
+    
+    if (!_stockfishInstance) {
+      throw new Error('Stockfish engine initialization failed');
+    }
+    
+    return _stockfishInstance.getBestMove(config);
+  },
+  
+  async analyzePosition(config: StockfishConfig = {}): Promise<MoveAnalysis> {
+    if (!_stockfishInstance) {
+      await this.init();
+    }
+    
+    if (!_stockfishInstance) {
+      throw new Error('Stockfish engine initialization failed');
+    }
+    
+    return _stockfishInstance.analyzePosition(config);
+  },
+  
+  async setSkillLevel(elo: number): Promise<void> {
+    if (!_stockfishInstance) {
+      await this.init();
+    }
+    
+    if (!_stockfishInstance) {
+      throw new Error('Stockfish engine initialization failed');
+    }
+    
+    return _stockfishInstance.setSkillLevel(elo);
+  },
+  
+  async stop(): Promise<void> {
+    if (!_stockfishInstance) {
+      return;
+    }
+    
+    if (_stockfishInstance.stop) {
+      return _stockfishInstance.stop();
+    }
+  },
+  
+  dispose(): void {
+    if (_stockfishInstance) {
+      _stockfishInstance.dispose();
+      _stockfishInstance = null;
+    }
+  }
+};

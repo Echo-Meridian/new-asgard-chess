@@ -1,0 +1,39 @@
+name: Build Stockfish for iOS
+
+on:
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build:
+    runs-on: macos-latest  # Need macOS for iOS building tools
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Clone Stockfish
+      run: |
+        git clone https://github.com/official-stockfish/Stockfish.git
+        cd Stockfish
+        git checkout sf_15  # Use a stable release tag
+    
+    - name: Build for iOS ARM64
+      run: |
+        cd Stockfish/src
+        export IOS_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)
+        make -j2 build ARCH=armv8 \
+          CXX="xcrun --sdk iphoneos clang++ -isysroot $IOS_SYSROOT -arch arm64 -mios-version-min=12.0" \
+          CC="xcrun --sdk iphoneos clang -isysroot $IOS_SYSROOT -arch arm64 -mios-version-min=12.0" \
+          EXE=stockfish-ios-arm64 \
+          STRIP="xcrun --sdk iphoneos strip"
+    
+    - name: Package iOS binary
+      run: |
+        mkdir -p ios-binary
+        cp Stockfish/src/stockfish-ios-arm64 ios-binary/stockfish
+        zip -r stockfish-ios.zip ios-binary
+    
+    - name: Upload iOS binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: stockfish-ios
+        path: stockfish-ios.zip

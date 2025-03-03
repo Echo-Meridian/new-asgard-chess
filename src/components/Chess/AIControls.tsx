@@ -37,10 +37,10 @@ export default function AIControls({
     setDifficulty(e.target.value as DifficultyLevel);
   };
   
-  const handleAIToggle = () => {
-    console.log("Toggling AI from", isAIEnabled, "to", !isAIEnabled);
+  function handleToggleAI() {
+    console.log("AI button clicked, current state:", isAIEnabled);
     setAIEnabled(!isAIEnabled);
-  };
+  }
   
   const handleGetHint = () => {
     console.log("Get hint clicked");
@@ -56,7 +56,7 @@ export default function AIControls({
               ? 'bg-amber-500 hover:bg-amber-400' 
               : 'bg-amber-700 hover:bg-amber-600'} 
             text-white font-medium`}
-          onClick={handleAIToggle}
+          onClick={handleToggleAI}
           disabled={loading || isAIThinking}
         >
           {isAIEnabled ? 'AI: ON' : 'AI: OFF'}
@@ -101,10 +101,21 @@ export default function AIControls({
             </label>
             
             <div className="text-xs text-amber-300 mt-1">
-              {loading && 'Loading Stockfish engine...'}
-              {error && <span className="text-red-400">{error}</span>}
+              {loading && <span className="animate-pulse">Loading Stockfish engine...</span>}
+              {error && (
+                <div className="text-red-400">
+                  <div className="font-semibold mb-1">AI Error:</div>
+                  <div>{error}</div>
+                  <button 
+                    className="mt-1 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs"
+                    onClick={() => window.location.reload()}
+                  >
+                    Reload Page
+                  </button>
+                </div>
+              )}
               {initialized && !loading && !error && 
-                <span className="text-green-400">Stockfish AI ready ✓</span>}
+                <span className="text-green-400">✅ Stockfish AI ready</span>}
             </div>
           </div>
         </div>

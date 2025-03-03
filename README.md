@@ -1,68 +1,20 @@
 # New Asgard Chess
 
-A Norse-themed chess game with Stockfish AI integration.
-
-## Features
-
-- Standard chess rules with visual indicators
-- Norse rune overlays for move visualization
-- Sound effects for moves, captures, and check
-- AI opponent using Stockfish chess engine
-- Mobile-friendly responsive design
-- Progressive Web App (PWA) support
-
-## Getting Started
-
-1. Clone the repository
-2. Install dependencies:
-
-```bash
-npm install
-```
-
-3. Prepare the AI dependencies:
-
-```bash
-npm run prepare-ai
-```
-
-4. Start the development server:
-
-```bash
-npm run dev
-```
-
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## AI Integration
-
-This project uses a mock Stockfish implementation for development and testing. For production use, you should replace the mock files with the actual Stockfish WASM files.
-
-The mock Stockfish engine:
-- Understands and responds to UCI protocol commands
-- Generates plausible chess moves based on common openings
-- Simulates analysis with varying depths and scores
+A Norse-themed chess game with AI integration using Stockfish.
 
 ## Project Structure
 
-- `/src/ai` - Stockfish chess AI integration
-- `/src/components` - React UI components
-- `/src/hooks` - Custom React hooks
-- `/src/types` - TypeScript definitions
-- `/src/utils` - Utility functions
-- `/public/stockfish` - Stockfish engine files
+This project is a React application (using Next.js) with a chess game that includes AI integration using Stockfish.
 
-## Technologies
+### Key Directories:
 
-- [Next.js](https://nextjs.org/)
-- [React](https://reactjs.org/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Stockfish](https://stockfishchess.org/)
+- `/src/ai` - Chess AI implementation
+- `/src/components/Chess` - Chess game components
+- `/src/hooks` - React hooks for the game
+- `/src/types` - TypeScript type definitions
 
-## Recent Improvements
+## Current Task
 
-- Fixed favicon issues on iOS devices
-- Added robust sound system with mobile support
-- Implemented Stockfish chess AI integration
-- Created AI controls with difficulty settings
+Implement a cross-platform AI integration for the chess game using Stockfish. The implementation should work on both iOS and Android, with a temporary JavaScript fallback for immediate testing.
+
+See the detailed instructions in the Claude Code Instructions document.
