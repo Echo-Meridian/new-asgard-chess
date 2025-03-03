@@ -8,13 +8,13 @@ jobs:
     runs-on: macos-latest  # Need macOS for iOS building tools
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Clone Stockfish
       run: |
         git clone https://github.com/official-stockfish/Stockfish.git
         cd Stockfish
-        git checkout sf_15  # Use a stable release tag
+        git checkout sf_16  # Use latest stable release
     
     - name: Build for iOS ARM64
       run: |
@@ -33,7 +33,7 @@ jobs:
         zip -r stockfish-ios.zip ios-binary
     
     - name: Upload iOS binary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Updated to v4
       with:
         name: stockfish-ios
         path: stockfish-ios.zip

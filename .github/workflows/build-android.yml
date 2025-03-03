@@ -8,13 +8,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Clone Stockfish
       run: |
         git clone https://github.com/official-stockfish/Stockfish.git
         cd Stockfish
-        git checkout sf_15  # Use a stable release tag
+        git checkout sf_16  # Use latest stable release
     
     - name: Setup Android NDK
       uses: nttld/setup-ndk@v1
@@ -54,7 +54,7 @@ jobs:
         zip -r stockfish-android.zip android-binaries
     
     - name: Upload Android binaries
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Updated to v4
       with:
         name: stockfish-android
         path: stockfish-android.zip
